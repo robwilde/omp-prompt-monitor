@@ -1,12 +1,14 @@
 /**
  * Structural slice of omp's extension API this package depends on, declared
- * locally so the package has zero dependency on `@oh-my-pi/pi-coding-agent`
+ *  locally, so the package has zero dependency on `@oh-my-pi/pi-coding-agent`
  * (its published manifest uses `catalog:` specifiers that don't resolve
  * outside the omp monorepo). omp's loader only needs these shapes to be
  * satisfied structurally at runtime — it does not check against this type.
  */
+export type OmpNotifyLevel = "info" | "warning" | "error";
+
 export interface OmpUi {
-	setStatus(key: string, text: string | undefined): void;
+	notify(message: string, level?: OmpNotifyLevel): void;
 }
 
 export interface OmpSessionManager {

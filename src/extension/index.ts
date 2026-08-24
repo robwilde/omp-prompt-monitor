@@ -1,8 +1,8 @@
 import * as os from "node:os";
 import * as path from "node:path";
-import { HEARTBEAT_INTERVAL_MS, removeHeartbeat, writeHeartbeat } from "../core/heartbeat";
+import { HEARTBEAT_INTERVAL_MS, removeHeartbeat, writeHeartbeat } from "../core";
 import { DEFAULT_PORT, formatUrl, probeExisting } from "../server";
-import type { OmpApi, OmpCtx } from "./omp-api";
+import type { OmpApi, OmpCtx, OmpNotifyLevel } from "./omp-api";
 
 const POLL_ATTEMPTS = 20;
 const POLL_INTERVAL_MS = 100;
@@ -20,8 +20,14 @@ async function sendHeartbeat(ctx: OmpCtx, startedAt: number): Promise<void> {
 			startedAt,
 		});
 	} catch {
-		// Best-effort: a missed heartbeat write just means one stale window in the dashboard.
+		// Best-effort: a missed heartbeat writing just means one stale window in the dashboard.
 	}
+}
+
+export function formatMonitorResult(url: string, alive: boolean): { message: string; level: OmpNotifyLevel } {
+	return alive
+		? { message: `Dashboard available at: ${url}`, level: "info" }
+		: { message: "Failed to start dashboard", level: "error" };
 }
 
 async function startMonitorHandler(ctx: OmpCtx): Promise<void> {
@@ -29,7 +35,7 @@ async function startMonitorHandler(ctx: OmpCtx): Promise<void> {
 
 	let alive = await probeExisting("127.0.0.1", DEFAULT_PORT);
 	if (!alive) {
-		// `new URL(..., import.meta.url).pathname` would percent-encode spaces
+		// `new URL(..., import.meta.url).pathname` would per-cent-encode spaces
 		// (breaking a plugin installed under e.g. `~/My Plugins/…`) and yield a
 		// `/C:/…`-style path on Windows; `import.meta.dir` gives an OS-native path.
 		const cliPath = path.join(import.meta.dir, "..", "cli.ts");
@@ -43,7 +49,7 @@ async function startMonitorHandler(ctx: OmpCtx): Promise<void> {
 				detached: true,
 			}).unref();
 		} catch {
-			// Fall through: the poll loop below reports failure to the status line.
+			// Fall through: the poll loop below reports failure via ctx.ui.notify.
 		}
 		for (let attempt = 0; attempt < POLL_ATTEMPTS && !alive; attempt++) {
 			await Bun.sleep(POLL_INTERVAL_MS);
@@ -52,7 +58,8 @@ async function startMonitorHandler(ctx: OmpCtx): Promise<void> {
 	}
 
 	if (!ctx.hasUI) return;
-	ctx.ui.setStatus("omp-prompt-monitor", alive ? `monitor: ${url}` : "monitor: failed to start dashboard");
+	const result = formatMonitorResult(url, alive);
+	ctx.ui.notify(result.message, result.level);
 }
 
 export default function ompPromptMonitor(pi: OmpApi): void {
