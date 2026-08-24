@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>omp-prompt-monitor</title>
+<style>
+	:root {
+		color-scheme: dark;
+		--bg: #0d1117;
+		--panel: #161b22;
+		--border: #30363d;
+		--text: #c9d1d9;
+		--muted: #8b949e;
+		--accent: #58a6ff;
+		--live: #3fb950;
+		--recent: #d29922;
+		--idle: #6e7681;
+	}
+	* { box-sizing: border-box; }
+	body {
+		margin: 0;
+		font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+		background: var(--bg);
+		color: var(--text);
+		height: 100vh;
+		display: flex;
+		flex-direction: column;
+	}
+	header {
+		padding: 0.75rem 1rem;
+		border-bottom: 1px solid var(--border);
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+	}
+	header h1 { font-size: 1rem; margin: 0; font-weight: 600; }
+	input[type="search"] {
+		flex: 1;
+		max-width: 24rem;
+		background: var(--panel);
+		border: 1px solid var(--border);
+		color: var(--text);
+		padding: 0.35rem 0.6rem;
+		border-radius: 6px;
+	}
+	select {
+		background: var(--panel);
+		border: 1px solid var(--border);
+		color: var(--text);
+		padding: 0.35rem 0.6rem;
+		border-radius: 6px;
+	}
+	main {
+		flex: 1;
+		display: grid;
+		grid-template-columns: 20rem 22rem 1fr;
+		overflow: hidden;
+	}
+	.col {
+		overflow-y: auto;
+		border-right: 1px solid var(--border);
+		padding: 0.5rem;
+	}
+	.col:last-child { border-right: none; }
+	.project-item, .session-item {
+		padding: 0.5rem 0.6rem;
+		border-radius: 6px;
+		cursor: pointer;
+		margin-bottom: 0.25rem;
+	}
+	.project-item:hover, .session-item:hover { background: var(--panel); }
+	.project-item.active, .session-item.active { background: var(--panel); outline: 1px solid var(--accent); }
+	.project-title, .session-title { font-weight: 600; font-size: 0.85rem; }
+	.project-meta, .session-meta { font-size: 0.75rem; color: var(--muted); margin-top: 0.15rem; }
+	.chip {
+		display: inline-block;
+		font-size: 0.7rem;
+		padding: 0.05rem 0.4rem;
+		border-radius: 999px;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+	}
+	.chip.live { background: color-mix(in srgb, var(--live) 25%, transparent); color: var(--live); }
+	.chip.recent { background: color-mix(in srgb, var(--recent) 25%, transparent); color: var(--recent); }
+	.chip.idle { background: color-mix(in srgb, var(--idle) 25%, transparent); color: var(--idle); }
+	.prompt-row {
+		border-bottom: 1px solid var(--border);
+		padding: 0.75rem 1rem;
+	}
+	.prompt-head {
+		display: flex;
+		gap: 0.5rem;
+		align-items: baseline;
+		font-size: 0.75rem;
+		color: var(--muted);
+		margin-bottom: 0.35rem;
+	}
+	.prompt-row pre {
+		white-space: pre-wrap;
+		word-break: break-word;
+		margin: 0;
+		font-family: ui-monospace, monospace;
+		font-size: 0.85rem;
+	}
+	.kind-badge {
+		font-size: 0.65rem;
+		padding: 0.05rem 0.35rem;
+		border-radius: 4px;
+		background: var(--panel);
+		border: 1px solid var(--border);
+	}
+	footer {
+		padding: 0.4rem 1rem;
+		border-top: 1px solid var(--border);
+		font-size: 0.7rem;
+		color: var(--muted);
+		display: flex;
+		justify-content: space-between;
+	}
+	.empty { color: var(--muted); padding: 1rem; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<header>
+	<h1>omp-prompt-monitor</h1>
+	<input id="search" type="search" placeholder="Search prompts…" />
+	<select id="project-filter"><option value="">All projects</option></select>
+</header>
+<main>
+	<div class="col" id="projects"></div>
+	<div class="col" id="sessions"></div>
+	<div class="col" id="prompts"></div>
+</main>
+<footer>
+	<span id="footer-root"></span>
+	<span id="footer-generated"></span>
+</footer>
+<script>
+"use strict";
+
+const state = {
+	snapshot: null,
+	selectedProjectKey: "",
+	selectedSessionId: null,
+	sessionDetail: null,
+	search: "",
+};
+
+function relativeTime(ms) {
+	if (!Number.isFinite(ms)) return "unknown";
+	const diff = Date.now() - ms;
+	const mins = Math.floor(diff / 60000);
+	if (mins < 1) return "just now";
+	if (mins < 60) return mins + "m ago";
+	const hours = Math.floor(mins / 60);
+	if (hours < 24) return hours + "h ago";
+	const days = Math.floor(hours / 24);
+	return days + "d ago";
+}
+
+function livenessTitle(liveness, pid) {
+	if (liveness === "live") return "heartbeat from pid " + pid;
+	if (liveness === "recent") return "file changed in the last 15 min; liveness unknown";
+	return "no recent activity";
+}
+
+function el(tag, className, text) {
+	const node = document.createElement(tag);
+	if (className) node.className = className;
+	if (text !== undefined) node.textContent = text;
+	return node;
+}
+
+async function fetchSnapshot() {
+	const response = await fetch("/api/snapshot");
+	if (!response.ok) throw new Error("snapshot fetch failed: " + response.status);
+	return response.json();
+}
+
+async function fetchSession(id) {
+	const response = await fetch("/api/session/" + encodeURIComponent(id));
+	if (!response.ok) return null;
+	const body = await response.json();
+	return body.session;
+}
+
+function renderProjects() {
+	const container = document.getElementById("projects");
+	container.replaceChildren();
+	const select = document.getElementById("project-filter");
+	const existingValue = select.value;
+	select.replaceChildren(el("option", null, "All projects"));
+	select.options[0].value = "";
+
+	if (!state.snapshot) return;
+
+	for (const project of state.snapshot.projects) {
+		const option = el("option", null, project.repoLabel + " (" + project.sessionIds.length + ")");
+		option.value = project.key;
+		select.appendChild(option);
+
+		const item = el("div", "project-item" + (state.selectedProjectKey === project.key ? " active" : ""));
+		item.appendChild(el("div", "project-title", project.repoLabel));
+		const meta = el(
+			"div",
+			"project-meta",
+			project.sessionIds.length + " sessions · " + relativeTime(project.lastActivityAt),
+		);
+		if (project.liveCount > 0) {
+			const liveChip = el("span", "chip live", project.liveCount + " live");
+			liveChip.style.marginLeft = "0.4rem";
+			meta.appendChild(liveChip);
+		}
+		item.appendChild(meta);
+		item.addEventListener("click", () => {
+			state.selectedProjectKey = state.selectedProjectKey === project.key ? "" : project.key;
+			state.selectedSessionId = null;
+			state.sessionDetail = null;
+			render();
+		});
+		container.appendChild(item);
+	}
+
+	select.value = existingValue && [...select.options].some((o) => o.value === existingValue) ? existingValue : state.selectedProjectKey;
+}
+
+function visibleSessions() {
+	if (!state.snapshot) return [];
+	let sessions = state.snapshot.sessions;
+	if (state.selectedProjectKey) {
+		sessions = sessions.filter((s) => (s.repoRoot ?? s.cwd) === state.selectedProjectKey);
+	}
+	return sessions;
+}
+
+function renderSessions() {
+	const container = document.getElementById("sessions");
+	container.replaceChildren();
+	const sessions = visibleSessions();
+
+	if (sessions.length === 0) {
+		container.appendChild(el("div", "empty", "No sessions."));
+		return;
+	}
+
+	for (const session of sessions) {
+		const item = el("div", "session-item" + (state.selectedSessionId === session.id ? " active" : ""));
+		const titleRow = el("div", "session-title");
+		titleRow.textContent = session.title;
+		const chip = el("span", "chip " + session.liveness, session.liveness);
+		chip.title = livenessTitle(session.liveness, session.pid);
+		chip.style.marginLeft = "0.4rem";
+		titleRow.appendChild(chip);
+		item.appendChild(titleRow);
+		item.appendChild(
+			el(
+				"div",
+				"session-meta",
+				session.promptCount + " prompts · " + relativeTime(session.lastActivityAt) + " · " + session.repoLabel,
+			),
+		);
+		item.addEventListener("click", async () => {
+			state.selectedSessionId = session.id;
+			state.sessionDetail = await fetchSession(session.id);
+			render();
+		});
+		container.appendChild(item);
+	}
+}
+
+function renderPrompts() {
+	const container = document.getElementById("prompts");
+	container.replaceChildren();
+
+	if (!state.sessionDetail) {
+		container.appendChild(el("div", "empty", "Select a session to view its prompt timeline."));
+		return;
+	}
+
+	const query = state.search.trim().toLowerCase();
+	const prompts = state.sessionDetail.prompts.filter((p) => !query || p.text.toLowerCase().includes(query));
+
+	if (prompts.length === 0) {
+		container.appendChild(el("div", "empty", "No prompts match."));
+		return;
+	}
+
+	for (const prompt of prompts) {
+		const row = el("div", "prompt-row");
+		const head = el("div", "prompt-head");
+		head.appendChild(el("span", null, new Date(prompt.at).toLocaleString()));
+		head.appendChild(el("span", null, relativeTime(prompt.at)));
+		if (prompt.kind === "skill") head.appendChild(el("span", "kind-badge", "skill"));
+		row.appendChild(head);
+		const pre = document.createElement("pre");
+		pre.textContent = prompt.text;
+		row.appendChild(pre);
+		container.appendChild(row);
+	}
+}
+
+function renderFooter() {
+	if (!state.snapshot) return;
+	document.getElementById("footer-root").textContent = state.snapshot.sessionsRoot;
+	document.getElementById("footer-generated").textContent = "updated " + new Date(state.snapshot.generatedAt).toLocaleTimeString();
+}
+
+function render() {
+	renderProjects();
+	renderSessions();
+	renderPrompts();
+	renderFooter();
+}
+
+async function refresh() {
+	if (document.hidden) return;
+	try {
+		state.snapshot = await fetchSnapshot();
+		render();
+	} catch (err) {
+		console.error(err);
+	}
+}
+
+document.getElementById("search").addEventListener("input", (event) => {
+	state.search = event.target.value;
+	renderPrompts();
+});
+
+document.getElementById("project-filter").addEventListener("change", (event) => {
+	state.selectedProjectKey = event.target.value;
+	state.selectedSessionId = null;
+	state.sessionDetail = null;
+	render();
+});
+
+refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>
