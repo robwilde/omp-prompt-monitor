@@ -1,4 +1,4 @@
-export type PromptKind = "typed" | "skill";
+export type PromptKind = "typed" | "skill" | "reply";
 
 export interface PromptRow {
 	entryId: string;
@@ -147,7 +147,22 @@ export function parseSessionText(text: string): SessionParse | null {
 		if (record.type === "message") {
 			messageCount++;
 			const message = record.message;
-			if (!message || message.role !== "user") continue;
+			if (!message) continue;
+			if (message.role === "assistant") {
+				const replyText = extractText(message.content).trim();
+				if (replyText.length === 0) continue;
+				const at = Number.isFinite(message.timestamp) ? (message.timestamp as number) : Date.parse(record.timestamp ?? "");
+				prompts.push({
+					entryId: record.id ?? "",
+					parentId: record.parentId ?? null,
+					kind: "reply",
+					text: replyText,
+					at,
+					atFromEntry: !Number.isFinite(message.timestamp),
+				});
+				continue;
+			}
+			if (message.role !== "user") continue;
 			if (message.synthetic === true) continue;
 			if (message.steering === true) continue;
 			if (message.attribution === "agent") continue;
@@ -188,8 +203,9 @@ export function parseSessionText(text: string): SessionParse | null {
 	} else if (trimmedHeaderTitle) {
 		title = trimmedHeaderTitle;
 		titleSource = header.titleSource ?? "auto";
-	} else if (prompts[0]) {
-		title = prompts[0].text.replace(/\s+/g, " ").trim().slice(0, 60);
+	} else if (prompts.find((p) => p.kind !== "reply")) {
+		const firstUserPrompt = prompts.find((p) => p.kind !== "reply")!;
+		title = firstUserPrompt.text.replace(/\s+/g, " ").trim().slice(0, 60);
 		titleSource = "derived";
 	} else {
 		title = `Session ${header.id.slice(0, 8)}`;

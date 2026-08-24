@@ -28,6 +28,19 @@ describe("parseSessionText", () => {
 		expect(parsed?.prompts.length).toBe(2);
 	});
 
+	test("captures text from assistant replies and skips tool-only replies", async () => {
+		const text = await Bun.file(new URL("./fixtures/assistant-replies.jsonl", import.meta.url)).text();
+		const parsed = parseSessionText(text);
+
+		expect(parsed).not.toBeNull();
+		expect(parsed?.title).toBe("Please explain the deployment plan.");
+		expect(parsed?.titleSource).toBe("derived");
+		expect(parsed?.prompts.map((prompt) => prompt.kind)).toEqual(["reply", "typed", "reply", "skill"]);
+		expect(parsed?.prompts[0]?.text).toBe("Earlier context from the agent.");
+		expect(parsed?.prompts[2]?.text).toBe("The plan is\n documented below.");
+		expect(parsed?.prompts).not.toContainEqual(expect.objectContaining({ entryId: "a2" }));
+	});
+
 	test("non-JSON input is rejected", () => {
 		expect(parseSessionText("not json")).toBeNull();
 	});

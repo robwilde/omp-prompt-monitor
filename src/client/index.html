@@ -5,126 +5,183 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>omp-prompt-monitor</title>
 <style>
-	:root {
-		color-scheme: dark;
-		--bg: #0d1117;
-		--panel: #161b22;
-		--border: #30363d;
-		--text: #c9d1d9;
-		--muted: #8b949e;
-		--accent: #58a6ff;
-		--live: #3fb950;
-		--recent: #d29922;
-		--idle: #6e7681;
-	}
-	* { box-sizing: border-box; }
-	body {
-		margin: 0;
-		font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
-		background: var(--bg);
-		color: var(--text);
-		height: 100vh;
-		display: flex;
-		flex-direction: column;
-	}
-	header {
-		padding: 0.75rem 1rem;
-		border-bottom: 1px solid var(--border);
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-	}
-	header h1 { font-size: 1rem; margin: 0; font-weight: 600; }
-	input[type="search"] {
-		flex: 1;
-		max-width: 24rem;
-		background: var(--panel);
-		border: 1px solid var(--border);
-		color: var(--text);
-		padding: 0.35rem 0.6rem;
-		border-radius: 6px;
-	}
-	select {
-		background: var(--panel);
-		border: 1px solid var(--border);
-		color: var(--text);
-		padding: 0.35rem 0.6rem;
-		border-radius: 6px;
-	}
-	main {
-		flex: 1;
-		display: grid;
-		grid-template-columns: 20rem 22rem 1fr;
-		overflow: hidden;
-	}
-	.col {
-		overflow-y: auto;
-		border-right: 1px solid var(--border);
-		padding: 0.5rem;
-	}
-	.col:last-child { border-right: none; }
-	.project-item, .session-item {
-		padding: 0.5rem 0.6rem;
-		border-radius: 6px;
+:root {
+	color-scheme: dark;
+	--page: oklch(0.16 0.02 307);
+	--surface: oklch(0.19 0.022 307);
+	--surface-2: oklch(0.235 0.026 307);
+	--border: oklch(1 0 0 / 9%);
+	--border-strong: oklch(1 0 0 / 15%);
+	--text: oklch(0.92 0.01 307);
+	--muted: oklch(0.71 0.016 307);
+	--dim: oklch(0.53 0.018 307);
+	--pink: oklch(0.674 0.23 341);
+	--cyan: oklch(0.817 0.112 205);
+	--green: oklch(0.76 0.14 150);
+	--amber: oklch(0.79 0.14 85);
+	--red: oklch(0.66 0.19 25);
+	--radius: 6px;
+}
+
+* { box-sizing: border-box; }
+body {
+	margin: 0;
+	font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+	background: var(--page);
+	color: var(--text);
+	height: 100vh;
+	display: flex;
+	flex-direction: column;
+}
+button, input, select { font: inherit; }
+button { color: inherit; }
+button:focus-visible, input:focus-visible, select:focus-visible {
+	outline: 2px solid var(--cyan);
+	outline-offset: 2px;
+}
+header {
+	padding: 0.8rem 1rem;
+	border-bottom: 1px solid var(--border);
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+.brand { min-width: 11rem; }
+.brand-kicker, .section-label {
+	font-family: ui-monospace, monospace;
+	font-size: 0.65rem;
+	font-weight: 700;
+	letter-spacing: 0.13em;
+	text-transform: uppercase;
+	color: var(--pink);
+}
+header h1 {
+	font-family: ui-monospace, monospace;
+	font-size: 1rem;
+	letter-spacing: -0.04em;
+	margin: 0.1rem 0 0;
+	font-weight: 700;
+}
+input[type="search"], select {
+	background: var(--surface);
+	border: 1px solid var(--border-strong);
+	color: var(--text);
+	padding: 0.42rem 0.6rem;
+	border-radius: var(--radius);
+}
+input[type="search"] { flex: 1; max-width: 28rem; }
+select { min-width: 10rem; }
+main {
+	flex: 1;
+	display: grid;
+	grid-template-columns: 18rem 23rem minmax(0, 1fr);
+	overflow: hidden;
+}
+.col {
+	min-width: 0;
+	overflow-y: auto;
+	border-right: 1px solid var(--border);
+	padding: 0.75rem;
+}
+.col:last-child { border-right: none; }
+.section-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.2rem 0.35rem 0.6rem;
+}
+.section-count { color: var(--dim); font: 0.7rem ui-monospace, monospace; }
+.project-item, .session-item {
+		position: relative;
+		display: block;
+		width: 100%;
+		text-align: left;
+		background: transparent;
+		border: 1px solid transparent;
+		padding: 0.6rem 0.65rem 0.6rem 0.85rem;
+		border-radius: var(--radius);
 		cursor: pointer;
-		margin-bottom: 0.25rem;
-	}
-	.project-item:hover, .session-item:hover { background: var(--panel); }
-	.project-item.active, .session-item.active { background: var(--panel); outline: 1px solid var(--accent); }
-	.project-title, .session-title { font-weight: 600; font-size: 0.85rem; }
-	.project-meta, .session-meta { font-size: 0.75rem; color: var(--muted); margin-top: 0.15rem; }
-	.chip {
-		display: inline-block;
-		font-size: 0.7rem;
-		padding: 0.05rem 0.4rem;
-		border-radius: 999px;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-	}
-	.chip.live { background: color-mix(in srgb, var(--live) 25%, transparent); color: var(--live); }
-	.chip.recent { background: color-mix(in srgb, var(--recent) 25%, transparent); color: var(--recent); }
-	.chip.idle { background: color-mix(in srgb, var(--idle) 25%, transparent); color: var(--idle); }
-	.prompt-row {
-		border-bottom: 1px solid var(--border);
-		padding: 0.75rem 1rem;
-	}
-	.prompt-head {
-		display: flex;
-		gap: 0.5rem;
-		align-items: baseline;
-		font-size: 0.75rem;
-		color: var(--muted);
-		margin-bottom: 0.35rem;
-	}
-	.prompt-row pre {
-		white-space: pre-wrap;
-		word-break: break-word;
-		margin: 0;
-		font-family: ui-monospace, monospace;
-		font-size: 0.85rem;
-	}
-	.kind-badge {
-		font-size: 0.65rem;
-		padding: 0.05rem 0.35rem;
-		border-radius: 4px;
-		background: var(--panel);
-		border: 1px solid var(--border);
-	}
-	footer {
-		padding: 0.4rem 1rem;
-		border-top: 1px solid var(--border);
-		font-size: 0.7rem;
-		color: var(--muted);
-		display: flex;
-		justify-content: space-between;
-	}
-	.empty { color: var(--muted); padding: 1rem; font-size: 0.85rem; }
+		margin-bottom: 0.3rem;
+}
+.project-item:hover, .session-item:hover { background: var(--surface); border-color: var(--border); }
+.project-item.active, .session-item.active { background: var(--surface-2); border-color: color-mix(in srgb, var(--pink) 60%, var(--border)); }
+.session-item::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: 0.55rem;
+	bottom: 0.55rem;
+	width: 3px;
+	border-radius: 4px;
+	background: var(--dim);
+}
+.session-item.liveness-live::before { background: var(--green); box-shadow: 0 0 10px color-mix(in srgb, var(--green) 80%, transparent); animation: heartbeat 2.2s ease-in-out infinite; }
+.session-item.liveness-recent::before { background: var(--amber); }
+.session-item.liveness-idle::before { background: var(--dim); }
+@keyframes heartbeat { 50% { opacity: 0.42; } }
+.project-title, .session-title { display: block; font-weight: 650; font-size: 0.84rem; }
+.project-meta, .session-meta { display: block; font-size: 0.72rem; color: var(--muted); margin-top: 0.22rem; }
+.chip, .status-pill {
+	display: inline-flex;
+	align-items: center;
+	font-size: 0.65rem;
+	font-weight: 700;
+	line-height: 1.2;
+	padding: 0.18rem 0.42rem;
+	border-radius: 999px;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+.chip.live, .status-pill[data-status="complete"] { background: color-mix(in srgb, var(--green) 18%, transparent); color: var(--green); }
+.chip.recent, .status-pill[data-status="interrupted"] { background: color-mix(in srgb, var(--amber) 18%, transparent); color: var(--amber); }
+.chip.idle, .status-pill[data-status="unknown"] { background: color-mix(in srgb, var(--dim) 22%, transparent); color: var(--muted); }
+.status-pill[data-status="pending"] { background: color-mix(in srgb, var(--cyan) 18%, transparent); color: var(--cyan); }
+.status-pill[data-status="error"], .status-pill[data-status="aborted"] { background: color-mix(in srgb, var(--red) 18%, transparent); color: var(--red); }
+.filter-bar { display: flex; gap: 0.2rem; margin: 0 0 0.7rem; padding: 0.18rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.filter-button { flex: 1; border: 0; background: transparent; color: var(--muted); border-radius: 4px; padding: 0.3rem 0.2rem; font-size: 0.68rem; cursor: pointer; }
+.filter-button:hover { color: var(--text); }
+.filter-button.active { background: var(--surface-2); color: var(--pink); }
+.detail-heading { border-bottom: 1px solid var(--border); padding: 0.2rem 0.25rem 0.85rem; margin-bottom: 0.1rem; }
+.detail-title { font-family: ui-monospace, monospace; font-size: 0.95rem; font-weight: 700; margin-bottom: 0.45rem; }
+.detail-meta { display: flex; align-items: center; gap: 0.45rem; color: var(--muted); font-size: 0.72rem; }
+.prompt-row { position: relative; border-bottom: 1px solid var(--border); padding: 0.9rem 0.7rem 0.95rem 1rem; }
+.prompt-row::before { content: ""; position: absolute; left: 0.15rem; top: 0.9rem; bottom: 0.95rem; width: 3px; border-radius: 4px; background: var(--dim); }
+.prompt-row.prompt-user::before { background: var(--pink); }
+.prompt-row.prompt-reply { background: color-mix(in srgb, var(--cyan) 3%, transparent); }
+.prompt-row.prompt-reply::before { background: var(--cyan); }
+.prompt-head { display: flex; gap: 0.45rem; align-items: baseline; flex-wrap: wrap; font-size: 0.7rem; color: var(--muted); margin-bottom: 0.4rem; }
+.speaker { font: 700 0.64rem ui-monospace, monospace; letter-spacing: 0.09em; text-transform: uppercase; }
+.speaker.user { color: var(--pink); }
+.speaker.agent { color: var(--cyan); }
+.kind-badge { font-size: 0.62rem; padding: 0.13rem 0.35rem; border-radius: 4px; background: color-mix(in srgb, var(--pink) 12%, transparent); color: var(--pink); border: 1px solid color-mix(in srgb, var(--pink) 25%, transparent); }
+.prompt-row pre { white-space: pre-wrap; word-break: break-word; margin: 0; color: var(--text); font: 0.84rem/1.55 ui-monospace, monospace; }
+.prompt-reply pre { color: color-mix(in srgb, var(--text) 80%, var(--cyan)); }
+footer { padding: 0.45rem 1rem; border-top: 1px solid var(--border); font: 0.66rem ui-monospace, monospace; color: var(--dim); display: flex; justify-content: space-between; gap: 1rem; }
+.empty { color: var(--muted); padding: 1rem 0.35rem; font-size: 0.82rem; }
+@media (max-width: 900px) {
+	body { height: auto; min-height: 100vh; }
+	header { flex-wrap: wrap; }
+	.brand { flex-basis: 100%; }
+	main { grid-template-columns: minmax(14rem, 0.8fr) minmax(18rem, 1fr); overflow: visible; }
+	#prompts { grid-column: 1 / -1; min-height: 24rem; border-top: 1px solid var(--border); }
+}
+@media (max-width: 560px) {
+	main { display: block; }
+	.col { min-height: 14rem; max-height: 34rem; border-right: 0; border-bottom: 1px solid var(--border); }
+	#prompts { max-height: none; }
+	footer { display: block; line-height: 1.6; }
+}
+@media (prefers-reduced-motion: reduce) { .session-item.liveness-live::before { animation: none; } }
 </style>
 </head>
 <body>
 <header>
-	<h1>omp-prompt-monitor</h1>
-	<input id="search" type="search" placeholder="Search prompts…" />
+	<div class="brand">
+		<div class="brand-kicker">omp / field notes</div>
+		<h1>prompt monitor</h1>
+	</div>
+	<input id="search" type="search" placeholder="Search the journal…" />
 	<select id="project-filter"><option value="">All projects</option></select>
 </header>
 <main>
@@ -139,13 +196,7 @@
 <script>
 "use strict";
 
-const state = {
-	snapshot: null,
-	selectedProjectKey: "",
-	selectedSessionId: null,
-	sessionDetail: null,
-	search: "",
-};
+const state = { snapshot: null, selectedProjectKey: "", selectedSessionId: null, sessionDetail: null, search: "", livenessFilter: "" };
 
 function relativeTime(ms) {
 	if (!Number.isFinite(ms)) return "unknown";
@@ -155,8 +206,7 @@ function relativeTime(ms) {
 	if (mins < 60) return mins + "m ago";
 	const hours = Math.floor(mins / 60);
 	if (hours < 24) return hours + "h ago";
-	const days = Math.floor(hours / 24);
-	return days + "d ago";
+	return Math.floor(hours / 24) + "d ago";
 }
 
 function livenessTitle(liveness, pid) {
@@ -181,8 +231,7 @@ async function fetchSnapshot() {
 async function fetchSession(id) {
 	const response = await fetch("/api/session/" + encodeURIComponent(id));
 	if (!response.ok) return null;
-	const body = await response.json();
-	return body.session;
+	return (await response.json()).session;
 }
 
 function renderProjects() {
@@ -192,26 +241,19 @@ function renderProjects() {
 	const existingValue = select.value;
 	select.replaceChildren(el("option", null, "All projects"));
 	select.options[0].value = "";
-
 	if (!state.snapshot) return;
-
+	const heading = el("div", "section-heading");
+	heading.append(el("span", "section-label", "Projects"), el("span", "section-count", String(state.snapshot.projects.length)));
+	container.appendChild(heading);
 	for (const project of state.snapshot.projects) {
 		const option = el("option", null, project.repoLabel + " (" + project.sessionIds.length + ")");
 		option.value = project.key;
 		select.appendChild(option);
-
-		const item = el("div", "project-item" + (state.selectedProjectKey === project.key ? " active" : ""));
-		item.appendChild(el("div", "project-title", project.repoLabel));
-		const meta = el(
-			"div",
-			"project-meta",
-			project.sessionIds.length + " sessions · " + relativeTime(project.lastActivityAt),
-		);
-		if (project.liveCount > 0) {
-			const liveChip = el("span", "chip live", project.liveCount + " live");
-			liveChip.style.marginLeft = "0.4rem";
-			meta.appendChild(liveChip);
-		}
+		const item = el("button", "project-item" + (state.selectedProjectKey === project.key ? " active" : ""));
+		item.type = "button";
+		item.appendChild(el("span", "project-title", project.repoLabel));
+		const meta = el("span", "project-meta", project.sessionIds.length + " sessions · " + relativeTime(project.lastActivityAt));
+		if (project.liveCount > 0) meta.appendChild(el("span", "chip live", project.liveCount + " live"));
 		item.appendChild(meta);
 		item.addEventListener("click", () => {
 			state.selectedProjectKey = state.selectedProjectKey === project.key ? "" : project.key;
@@ -221,16 +263,14 @@ function renderProjects() {
 		});
 		container.appendChild(item);
 	}
-
-	select.value = existingValue && [...select.options].some((o) => o.value === existingValue) ? existingValue : state.selectedProjectKey;
+	select.value = existingValue && [...select.options].some((option) => option.value === existingValue) ? existingValue : state.selectedProjectKey;
 }
 
 function visibleSessions() {
 	if (!state.snapshot) return [];
 	let sessions = state.snapshot.sessions;
-	if (state.selectedProjectKey) {
-		sessions = sessions.filter((s) => (s.repoRoot ?? s.cwd) === state.selectedProjectKey);
-	}
+	if (state.selectedProjectKey) sessions = sessions.filter((session) => (session.repoRoot ?? session.cwd) === state.selectedProjectKey);
+	if (state.livenessFilter) sessions = sessions.filter((session) => session.liveness === state.livenessFilter);
 	return sessions;
 }
 
@@ -238,33 +278,29 @@ function renderSessions() {
 	const container = document.getElementById("sessions");
 	container.replaceChildren();
 	const sessions = visibleSessions();
-
-	if (sessions.length === 0) {
-		container.appendChild(el("div", "empty", "No sessions."));
-		return;
+	const heading = el("div", "section-heading");
+	heading.append(el("span", "section-label", "Sessions"), el("span", "section-count", String(sessions.length)));
+	container.appendChild(heading);
+	const filters = el("div", "filter-bar");
+	for (const [value, label] of [["", "All"], ["live", "Live"], ["recent", "Recent"], ["idle", "Idle"]]) {
+		const button = el("button", "filter-button" + (state.livenessFilter === value ? " active" : ""), label);
+		button.type = "button";
+		button.setAttribute("aria-pressed", String(state.livenessFilter === value));
+		button.addEventListener("click", () => { state.livenessFilter = value; renderSessions(); });
+		filters.appendChild(button);
 	}
-
+	container.appendChild(filters);
+	if (sessions.length === 0) { container.appendChild(el("div", "empty", "No sessions in this view.")); return; }
 	for (const session of sessions) {
-		const item = el("div", "session-item" + (state.selectedSessionId === session.id ? " active" : ""));
-		const titleRow = el("div", "session-title");
-		titleRow.textContent = session.title;
+		const item = el("button", "session-item liveness-" + session.liveness + (state.selectedSessionId === session.id ? " active" : ""));
+		item.type = "button";
+		const titleRow = el("span", "session-title", session.title);
 		const chip = el("span", "chip " + session.liveness, session.liveness);
 		chip.title = livenessTitle(session.liveness, session.pid);
 		chip.style.marginLeft = "0.4rem";
 		titleRow.appendChild(chip);
-		item.appendChild(titleRow);
-		item.appendChild(
-			el(
-				"div",
-				"session-meta",
-				session.promptCount + " prompts · " + relativeTime(session.lastActivityAt) + " · " + session.repoLabel,
-			),
-		);
-		item.addEventListener("click", async () => {
-			state.selectedSessionId = session.id;
-			state.sessionDetail = await fetchSession(session.id);
-			render();
-		});
+		item.append(titleRow, el("span", "session-meta", session.promptCount + " prompts · " + relativeTime(session.lastActivityAt) + " · " + session.repoLabel));
+		item.addEventListener("click", async () => { state.selectedSessionId = session.id; state.sessionDetail = await fetchSession(session.id); render(); });
 		container.appendChild(item);
 	}
 }
@@ -272,25 +308,25 @@ function renderSessions() {
 function renderPrompts() {
 	const container = document.getElementById("prompts");
 	container.replaceChildren();
-
-	if (!state.sessionDetail) {
-		container.appendChild(el("div", "empty", "Select a session to view its prompt timeline."));
-		return;
-	}
-
+	if (!state.sessionDetail) { container.appendChild(el("div", "empty", "Select a session to open its journal.")); return; }
+	const session = state.sessionDetail;
+	const heading = el("div", "detail-heading");
+	heading.appendChild(el("div", "detail-title", session.title));
+	const meta = el("div", "detail-meta");
+	const status = el("span", "status-pill", session.tailStatus);
+	status.dataset.status = session.tailStatus;
+	meta.append(el("span", "chip " + session.liveness, session.liveness), status);
+	heading.appendChild(meta);
+	container.appendChild(heading);
 	const query = state.search.trim().toLowerCase();
-	const prompts = state.sessionDetail.prompts.filter((p) => !query || p.text.toLowerCase().includes(query));
-
-	if (prompts.length === 0) {
-		container.appendChild(el("div", "empty", "No prompts match."));
-		return;
-	}
-
+	const prompts = session.prompts.filter((prompt) => !query || prompt.text.toLowerCase().includes(query));
+	if (prompts.length === 0) { container.appendChild(el("div", "empty", "No journal entries match.")); return; }
 	for (const prompt of prompts) {
-		const row = el("div", "prompt-row");
+		const isReply = prompt.kind === "reply";
+		const row = el("article", "prompt-row " + (isReply ? "prompt-reply" : "prompt-user"));
 		const head = el("div", "prompt-head");
-		head.appendChild(el("span", null, new Date(prompt.at).toLocaleString()));
-		head.appendChild(el("span", null, relativeTime(prompt.at)));
+		head.append(el("span", "speaker " + (isReply ? "agent" : "user"), isReply ? "Agent" : "You"));
+		head.append(el("span", null, new Date(prompt.at).toLocaleString()), el("span", null, relativeTime(prompt.at)));
 		if (prompt.kind === "skill") head.appendChild(el("span", "kind-badge", "skill"));
 		row.appendChild(head);
 		const pre = document.createElement("pre");
@@ -306,28 +342,14 @@ function renderFooter() {
 	document.getElementById("footer-generated").textContent = "updated " + new Date(state.snapshot.generatedAt).toLocaleTimeString();
 }
 
-function render() {
-	renderProjects();
-	renderSessions();
-	renderPrompts();
-	renderFooter();
-}
+function render() { renderProjects(); renderSessions(); renderPrompts(); renderFooter(); }
 
 async function refresh() {
 	if (document.hidden) return;
-	try {
-		state.snapshot = await fetchSnapshot();
-		render();
-	} catch (err) {
-		console.error(err);
-	}
+	try { state.snapshot = await fetchSnapshot(); render(); } catch (err) { console.error(err); }
 }
 
-document.getElementById("search").addEventListener("input", (event) => {
-	state.search = event.target.value;
-	renderPrompts();
-});
-
+document.getElementById("search").addEventListener("input", (event) => { state.search = event.target.value; renderPrompts(); });
 document.getElementById("project-filter").addEventListener("change", (event) => {
 	state.selectedProjectKey = event.target.value;
 	state.selectedSessionId = null;

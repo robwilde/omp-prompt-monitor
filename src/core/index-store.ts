@@ -14,7 +14,7 @@ export interface IndexStore {
 }
 
 interface CacheFile {
-	v: 1;
+	v: 2;
 	entries: IndexedSession[];
 }
 
@@ -25,7 +25,7 @@ async function loadCache(cacheFile: string): Promise<Map<string, IndexedSession>
 	const cache = new Map<string, IndexedSession>();
 	try {
 		const parsed = (await Bun.file(cacheFile).json()) as CacheFile;
-		if (parsed.v === 1 && Array.isArray(parsed.entries)) {
+		if (parsed.v === 2 && Array.isArray(parsed.entries)) {
 			for (const entry of parsed.entries) cache.set(entry.file, entry);
 		}
 	} catch {
@@ -107,7 +107,7 @@ export function createIndexStore(options?: {
 			return indexed;
 		}
 
-		const payload: CacheFile = { v: 1, entries: indexed };
+		const payload: CacheFile = { v: 2, entries: indexed };
 		await Bun.write(cacheFile, JSON.stringify(payload));
 
 		return indexed;

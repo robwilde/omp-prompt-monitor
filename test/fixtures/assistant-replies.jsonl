@@ -1,0 +1,6 @@
+{"type":"session","id":"reply-0001","cwd":"/tmp/reply-proj","timestamp":"2026-01-03T00:00:00.000Z"}
+{"type":"message","id":"a0","parentId":null,"timestamp":"2026-01-03T00:00:01.000Z","message":{"role":"assistant","content":"Earlier context from the agent.","timestamp":1767398401000}}
+{"type":"message","id":"u1","parentId":"a0","timestamp":"2026-01-03T00:00:02.000Z","message":{"role":"user","content":"Please explain the deployment plan.","timestamp":1767398402000}}
+{"type":"message","id":"a1","parentId":"u1","timestamp":"2026-01-03T00:00:03.000Z","message":{"role":"assistant","content":[{"type":"text","text":"The plan is"},{"type":"toolCall","name":"deploy","arguments":{}},{"type":"text","text":" documented below."}],"timestamp":1767398403000}}
+{"type":"message","id":"a2","parentId":"a1","timestamp":"2026-01-03T00:00:04.000Z","message":{"role":"assistant","content":[{"type":"toolCall","name":"check","arguments":{}}],"timestamp":1767398404000}}
+{"type":"custom_message","id":"s1","parentId":"a2","timestamp":"2026-01-03T00:00:05.000Z","customType":"skill-prompt","attribution":"user","content":"run the deploy skill"}
