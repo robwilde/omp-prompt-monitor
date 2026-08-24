@@ -158,6 +158,8 @@ main {
 .prompt-row pre { white-space: pre-wrap; word-break: break-word; margin: 0; color: var(--text); font: 0.84rem/1.55 ui-monospace, monospace; }
 .prompt-reply pre { color: color-mix(in srgb, var(--text) 80%, var(--cyan)); }
 footer { padding: 0.45rem 1rem; border-top: 1px solid var(--border); font: 0.66rem ui-monospace, monospace; color: var(--dim); display: flex; justify-content: space-between; gap: 1rem; }
+#footer-update { color: var(--amber); }
+#footer-update:empty { display: none; }
 .empty { color: var(--muted); padding: 1rem 0.35rem; font-size: 0.82rem; }
 @media (max-width: 900px) {
 	body { height: auto; min-height: 100vh; }
@@ -191,12 +193,14 @@ footer { padding: 0.45rem 1rem; border-top: 1px solid var(--border); font: 0.66r
 </main>
 <footer>
 	<span id="footer-root"></span>
+	<span id="footer-update"></span>
 	<span id="footer-generated"></span>
 </footer>
 <script>
 "use strict";
 
-const state = { snapshot: null, selectedProjectKey: "", selectedSessionId: null, sessionDetail: null, search: "", livenessFilter: "", promptRole: "" };
+const state = { snapshot: null, selectedProjectKey: "", selectedSessionId: null, sessionDetail: null, search: "", livenessFilter: "", promptRole: "", updateStatus: null, updateCheckedAt: 0 };
+const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
 function relativeTime(ms) {
 	if (!Number.isFinite(ms)) return "unknown";
@@ -232,6 +236,18 @@ async function fetchSnapshot() {
 	const response = await fetch("/api/snapshot");
 	if (!response.ok) throw new Error("snapshot fetch failed: " + response.status);
 	return response.json();
+}
+
+async function fetchUpdateStatus() {
+	const response = await fetch("/api/update");
+	if (!response.ok) return null;
+	return response.json();
+}
+
+async function maybeCheckUpdate() {
+	if (state.updateCheckedAt && Date.now() - state.updateCheckedAt < UPDATE_CHECK_INTERVAL_MS) return;
+	state.updateCheckedAt = Date.now();
+	try { state.updateStatus = await fetchUpdateStatus(); renderFooter(); } catch (err) { console.error(err); }
 }
 
 async function fetchSession(id) {
@@ -352,6 +368,9 @@ function renderPrompts() {
 }
 
 function renderFooter() {
+	const update = state.updateStatus;
+	document.getElementById("footer-update").textContent =
+		update && update.updateAvailable ? "update available: " + update.current + " → " + update.latest + " · run /monitor update" : "";
 	if (!state.snapshot) return;
 	document.getElementById("footer-root").textContent = state.snapshot.sessionsRoot;
 	document.getElementById("footer-generated").textContent = "updated " + new Date(state.snapshot.generatedAt).toLocaleTimeString();
@@ -361,7 +380,7 @@ function render() { renderProjects(); renderSessions(); renderPrompts(); renderF
 
 async function refresh() {
 	if (document.hidden) return;
-	try { state.snapshot = await fetchSnapshot(); render(); } catch (err) { console.error(err); }
+	try { state.snapshot = await fetchSnapshot(); render(); void maybeCheckUpdate(); } catch (err) { console.error(err); }
 }
 
 document.getElementById("search").addEventListener("input", (event) => { state.search = event.target.value; renderPrompts(); });
