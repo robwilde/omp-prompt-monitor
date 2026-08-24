@@ -1,0 +1,16 @@
+{
+  "name": "omp-prompt-monitor",
+  "version": "0.1.0",
+  "description": "Local dashboard of Oh My Pi sessions and user prompts",
+  "type": "module",
+  "license": "MIT",
+  "bin": { "omp-monitor": "./src/cli.ts" },
+  "exports": {
+    ".": "./src/core/index.ts",
+    "./extension": "./src/extension/index.ts"
+  },
+  "omp": { "extensions": ["./src/extension/index.ts"] },
+  "engines": { "bun": ">=1.3.14" },
+  "files": ["src", "README.md"],
+  "devDependencies": { "@types/bun": "^1.3.14" }
+}
