@@ -23,7 +23,7 @@ export interface SessionParse {
 	version: number | null;
 	parentSession: string | null;
 	prompts: PromptRow[];
-	/** Total `type:"message"` entries, for a cheap activity signal. */
+	/** Total `type:"message"` entries, for an inexpensive activity signal. */
 	messageCount: number;
 	/** Last `type:"message"` role, mapped to omp's tail-status literals. */
 	tailStatus: TailStatus;
@@ -64,8 +64,8 @@ interface TextBlock {
 function isTextBlock(block: unknown): block is TextBlock {
 	if (typeof block !== "object" || block === null) return false;
 	if (!("type" in block) || block.type !== "text") return false;
-	if (!("text" in block) || typeof block.text !== "string") return false;
-	return true;
+	return !(!("text" in block) || typeof block.text !== "string");
+
 }
 
 /** String content, or joined `text` blocks from an array (images contribute nothing). */
@@ -110,8 +110,9 @@ function deriveTailStatus(records: JournalRecord[]): TailStatus {
 	return "unknown";
 }
 
-/** Parse one session JSONL file's text into a session summary + prompt timeline. Returns `null` when the file is not a valid session (header validation fails). */
-export function parseSessionText(text: string): SessionParse | null {
+/** Parse one session JSONL file. Replies are included by default; indexing can disable them to keep polling lightweight. */
+export function parseSessionText(text: string, options?: { includeReplies?: boolean }): SessionParse | null {
+	const includeReplies = options?.includeReplies ?? true;
 	const lines = text.split("\n");
 	const records: JournalRecord[] = [];
 	let malformedLines = 0;
@@ -149,6 +150,7 @@ export function parseSessionText(text: string): SessionParse | null {
 			const message = record.message;
 			if (!message) continue;
 			if (message.role === "assistant") {
+				if (!includeReplies) continue;
 				const replyText = extractText(message.content).trim();
 				if (replyText.length === 0) continue;
 				const at = Number.isFinite(message.timestamp) ? (message.timestamp as number) : Date.parse(record.timestamp ?? "");

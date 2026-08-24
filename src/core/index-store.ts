@@ -14,7 +14,7 @@ export interface IndexStore {
 }
 
 interface CacheFile {
-	v: 2;
+	v: 1;
 	entries: IndexedSession[];
 }
 
@@ -25,7 +25,7 @@ async function loadCache(cacheFile: string): Promise<Map<string, IndexedSession>
 	const cache = new Map<string, IndexedSession>();
 	try {
 		const parsed = (await Bun.file(cacheFile).json()) as CacheFile;
-		if (parsed.v === 2 && Array.isArray(parsed.entries)) {
+		if (parsed.v === 1 && Array.isArray(parsed.entries)) {
 			for (const entry of parsed.entries) cache.set(entry.file, entry);
 		}
 	} catch {
@@ -94,7 +94,7 @@ export function createIndexStore(options?: {
 				// rather than crashing the whole refresh over one racy file.
 				return null;
 			}
-			const parsed = parseSessionText(text);
+			const parsed = parseSessionText(text, { includeReplies: false });
 			if (!parsed) return null;
 
 			return { ...parsed, file, sizeBytes: stat.size, mtimeMs: stat.mtimeMs };
@@ -103,11 +103,11 @@ export function createIndexStore(options?: {
 		const indexed = entries.filter((entry): entry is IndexedSession => entry !== null);
 
 		if (!changed && indexed.length === cache.size) {
-			// Nothing changed and no files disappeared: skip the write.
+			// Nothing changed and no files disappeared: skip the writing.
 			return indexed;
 		}
 
-		const payload: CacheFile = { v: 2, entries: indexed };
+		const payload: CacheFile = { v: 1, entries: indexed };
 		await Bun.write(cacheFile, JSON.stringify(payload));
 
 		return indexed;

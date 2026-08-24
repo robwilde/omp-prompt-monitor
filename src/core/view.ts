@@ -4,7 +4,7 @@ import type { Heartbeat } from "./heartbeat";
 import { readHeartbeats } from "./heartbeat";
 import type { IndexedSession } from "./index-store";
 import { createIndexStore } from "./index-store";
-import type { PromptRow, TailStatus, TitleSource } from "./journal";
+import { parseSessionText, type PromptRow, type TailStatus, type TitleSource } from "./journal";
 import { resolveSessionsRoot } from "./paths";
 
 export type Liveness = "live" | "recent" | "idle";
@@ -69,13 +69,22 @@ async function buildSessionRow(session: IndexedSession, heartbeats: Map<string, 
 		remoteUrl: repo.remoteUrl,
 		createdAt: session.createdAt,
 		lastActivityAt,
-		promptCount: session.prompts.filter((prompt) => prompt.kind !== "reply").length,
+		promptCount: session.prompts.length,
 		messageCount: session.messageCount,
 		tailStatus: session.tailStatus,
 		liveness,
 		pid: heartbeat?.pid ?? null,
 		prompts: session.prompts,
 	};
+}
+
+export async function loadSessionPrompts(session: Pick<SessionRow, "file" | "prompts">): Promise<PromptRow[]> {
+	try {
+		const parsed = parseSessionText(await Bun.file(session.file).text());
+		return parsed?.prompts ?? session.prompts;
+	} catch {
+		return session.prompts;
+	}
 }
 
 function groupByProject(sessions: SessionRow[]): ProjectGroup[] {
