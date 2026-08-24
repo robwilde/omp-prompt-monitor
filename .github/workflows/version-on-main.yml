@@ -1,0 +1,62 @@
+name: Bump package version
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: version-main
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip version bump]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+          persist-credentials: true
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Synchronize with main
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
+
+      - name: Bump patch version
+        id: version
+        shell: bash
+        run: |
+          VERSION="$(bun -e '
+            const file = "package.json";
+            const text = await Bun.file(file).text();
+            const pkg = JSON.parse(text);
+            const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(pkg.version);
+            if (!match) throw new Error(`Unsupported package version: ${pkg.version}`);
+            const next = `${match[1]}.${match[2]}.${Number(match[3]) + 1}`;
+            const updated = text.replace(`"version": "${pkg.version}"`, `"version": "${next}"`);
+            if (updated === text) throw new Error("Could not locate package version field");
+            await Bun.write(file, updated);
+            process.stdout.write(next);
+          ')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push version
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore: bump package version to ${{ steps.version.outputs.version }} [skip version bump]"
+          git pull --rebase origin main
+          git push origin HEAD:main
