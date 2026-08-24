@@ -1,6 +1,6 @@
 import htmlBundle from "./client/index.html" with { type: "text" };
-import { buildSnapshot } from "./core/view";
-import type { MonitorSnapshot } from "./core/view";
+import { buildSnapshot, loadSessionPrompts } from "./core";
+import type { MonitorSnapshot } from "./core";
 
 // bun-types' ambient `*.html` module declaration always types the default export as
 // `HTMLBundle`, regardless of the `{ type: "text" }` import attribute; at runtime that
@@ -92,7 +92,8 @@ export async function startServer(options?: {
 						if (!session) {
 							return withIdentityHeader(Response.json({ error: "unknown session" }, { status: 404 }));
 						}
-						return withIdentityHeader(Response.json({ session }));
+						const prompts = await loadSessionPrompts(session);
+						return withIdentityHeader(Response.json({ session: { ...session, prompts } }));
 					}
 
 					return withIdentityHeader(new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } }));
