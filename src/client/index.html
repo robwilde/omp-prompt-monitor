@@ -196,7 +196,7 @@ footer { padding: 0.45rem 1rem; border-top: 1px solid var(--border); font: 0.66r
 <script>
 "use strict";
 
-const state = { snapshot: null, selectedProjectKey: "", selectedSessionId: null, sessionDetail: null, search: "", livenessFilter: "" };
+const state = { snapshot: null, selectedProjectKey: "", selectedSessionId: null, sessionDetail: null, search: "", livenessFilter: "", promptRole: "" };
 
 function relativeTime(ms) {
 	if (!Number.isFinite(ms)) return "unknown";
@@ -213,6 +213,12 @@ function livenessTitle(liveness, pid) {
 	if (liveness === "live") return "heartbeat from pid " + pid;
 	if (liveness === "recent") return "file changed in the last 15 min; liveness unknown";
 	return "no recent activity";
+}
+
+function matchesRole(prompt, role) {
+	if (!role) return true;
+	if (role === "agent") return prompt.kind === "reply";
+	return prompt.kind !== "reply";
 }
 
 function el(tag, className, text) {
@@ -318,8 +324,17 @@ function renderPrompts() {
 	meta.append(el("span", "chip " + session.liveness, session.liveness), status);
 	heading.appendChild(meta);
 	container.appendChild(heading);
+	const roleFilters = el("div", "filter-bar");
+	for (const [value, label] of [["", "All"], ["you", "You"], ["agent", "Agent"]]) {
+		const button = el("button", "filter-button" + (state.promptRole === value ? " active" : ""), label);
+		button.type = "button";
+		button.setAttribute("aria-pressed", String(state.promptRole === value));
+		button.addEventListener("click", () => { state.promptRole = value; renderPrompts(); });
+		roleFilters.appendChild(button);
+	}
+	container.appendChild(roleFilters);
 	const query = state.search.trim().toLowerCase();
-	const prompts = session.prompts.filter((prompt) => !query || prompt.text.toLowerCase().includes(query));
+	const prompts = session.prompts.filter((prompt) => (!query || prompt.text.toLowerCase().includes(query)) && matchesRole(prompt, state.promptRole));
 	if (prompts.length === 0) { container.appendChild(el("div", "empty", "No journal entries match.")); return; }
 	for (const prompt of prompts) {
 		const isReply = prompt.kind === "reply";
