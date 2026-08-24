@@ -1,0 +1,9 @@
+{"type":"title","v":1,"title":"user renamed","source":"user","updatedAt":"2026-01-02T00:00:00.000Z","pad":"                                                                                                                                                  "}
+{"type":"session","version":3,"id":"test-0001","cwd":"/tmp/proj","title":"stale auto title","titleSource":"auto","timestamp":"2026-01-01T00:00:00.000Z"}
+{"type":"message","id":"e1","parentId":null,"timestamp":"2026-01-01T00:00:01.000Z","message":{"role":"user","content":"This is a real typed prompt.","timestamp":1767225600000}}
+{"type":"message","id":"e2","parentId":"e1","timestamp":"2026-01-01T00:00:02.000Z","message":{"role":"user","synthetic":true,"content":"synthetic system-injected content","timestamp":1767225601000}}
+{"type":"message","id":"e3","parentId":"e2","timestamp":"2026-01-01T00:00:03.000Z","message":{"role":"user","steering":true,"content":"mid-turn steering interjection","timestamp":1767225602000}}
+{"type":"message","id":"e4","parentId":"e3","timestamp":"2026-01-01T00:00:04.000Z","message":{"role":"user","content":[{"type":"image","source":{"type":"base64","data":"AAAA","mediaType":"image/png"}}],"timestamp":1767225603000}}
+{"type":"custom_message","id":"e5","parentId":"e4","timestamp":"2026-01-01T00:00:05.000Z","customType":"skill-prompt","attribution":"user","content":"run the atomic-commits skill","display":true}
+{"type":"custom_message","id":"e6","parentId":"e5","timestamp":"2026-01-01T00:00:06.000Z","customType":"advisor","attribution":"agent","content":"agent-side advisor noise","display":false}
+{"type":"mess
