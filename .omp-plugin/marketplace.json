@@ -1,0 +1,10 @@
+{
+  "name": "omp-prompt-monitor",
+  "owner": { "name": "robwilde" },
+  "plugins": [
+    {
+      "name": "omp-prompt-monitor",
+      "source": { "source": "github", "repo": "robwilde/omp-prompt-monitor" }
+    }
+  ]
+}

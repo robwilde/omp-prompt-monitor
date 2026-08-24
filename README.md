@@ -33,7 +33,7 @@ Restart omp (newly installed extension modules require a restart — `/reload-pl
 Share with other developers:
 
 ```bash
-omp install github:<owner>/omp-prompt-monitor
+omp install github:robwilde/omp-prompt-monitor
 ```
 
 Direct `omp install omp-prompt-monitor` works once this package is published to npm.
