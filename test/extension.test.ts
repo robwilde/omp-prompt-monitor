@@ -23,6 +23,13 @@ describe("formatMonitorResult", () => {
 			level: "error",
 		});
 	});
+
+	test("failure payload includes the diagnostic log path", () => {
+		expect(formatMonitorResult("http://127.0.0.1:7333", false, "/tmp/omp-prompt-monitor/dashboard.log")).toEqual({
+			message: "Failed to start dashboard; see /tmp/omp-prompt-monitor/dashboard.log",
+			level: "error",
+		});
+	});
 });
 
 describe("ctx.ui.notify contract", () => {
@@ -120,6 +127,22 @@ describe("formatUpdateResult", () => {
 	test("install-failed", () => {
 		expect(formatUpdateResult({ kind: "install-failed", output: "\nboom\nmore" })).toEqual({
 			message: "Update failed: boom",
+			level: "error",
+		});
+	});
+
+	test("updated, not alive, includes diagnostic log path", () => {
+		expect(
+			formatUpdateResult({
+				kind: "updated",
+				from: "0.1.0",
+				to: "0.2.0",
+				url: "http://127.0.0.1:7333",
+				alive: false,
+				logFile: "/tmp/omp-prompt-monitor/dashboard.log",
+			}),
+		).toEqual({
+			message: "Updated 0.1.0 → 0.2.0; failed to restart dashboard; see /tmp/omp-prompt-monitor/dashboard.log",
 			level: "error",
 		});
 	});

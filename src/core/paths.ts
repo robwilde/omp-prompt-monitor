@@ -89,6 +89,10 @@ export function resolveHeartbeatDir(env: Env = process.env): string {
 	return path.join(resolveMonitorStateDir(env), "heartbeats");
 }
 
+export function resolveDashboardLogFile(env: Env = process.env): string {
+	return path.join(resolveMonitorStateDir(env), "dashboard.log");
+}
+
 export function resolveCacheFile(env: Env = process.env): string {
 	return path.join(resolveMonitorStateDir(env), "index-cache.json");
 }

@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { HEARTBEAT_INTERVAL_MS, removeHeartbeat, writeHeartbeat } from "../core";
+import { HEARTBEAT_INTERVAL_MS, removeHeartbeat, resolveDashboardLogFile, writeHeartbeat } from "../core";
 import { DEFAULT_PORT, formatUrl, probeExisting, type StopOutcome, stopExisting } from "../server";
 import { repoSlug } from "../update";
 import type { OmpApi, OmpCtx, OmpNotifyLevel } from "./omp-api";
@@ -34,7 +34,7 @@ export type UpdateOutcome =
 	| { kind: "dev-link"; path: string }
 	| { kind: "omp-missing"; slug: string }
 	| { kind: "install-failed"; output: string }
-	| { kind: "updated"; from: string; to: string; url: string; alive: boolean };
+	| { kind: "updated"; from: string; to: string; url: string; alive: boolean; logFile?: string };
 
 export function parseMonitorAction(args: string): MonitorAction | null {
 	const value = args.trim().toLowerCase();
@@ -43,10 +43,12 @@ export function parseMonitorAction(args: string): MonitorAction | null {
 	return null;
 }
 
-export function formatMonitorResult(url: string, alive: boolean): { message: string; level: OmpNotifyLevel } {
-	return alive
-		? { message: `Dashboard available at: ${url}`, level: "info" }
-		: { message: "Failed to start dashboard", level: "error" };
+export function formatMonitorResult(url: string, alive: boolean, logFile?: string): { message: string; level: OmpNotifyLevel } {
+	if (alive) return { message: `Dashboard available at: ${url}`, level: "info" };
+	return {
+		message: logFile ? `Failed to start dashboard; see ${logFile}` : "Failed to start dashboard",
+		level: "error",
+	};
 }
 
 export function formatUnknownAction(raw: string): { message: string; level: OmpNotifyLevel } {
@@ -62,10 +64,12 @@ export function formatStopResult(outcome: StopOutcome): { message: string; level
 	return { message: "Failed to stop dashboard", level: "error" };
 }
 
-export function formatRestartResult(url: string, alive: boolean): { message: string; level: OmpNotifyLevel } {
-	return alive
-		? { message: `Dashboard restarted at: ${url}`, level: "info" }
-		: { message: "Failed to restart dashboard", level: "error" };
+export function formatRestartResult(url: string, alive: boolean, logFile?: string): { message: string; level: OmpNotifyLevel } {
+	if (alive) return { message: `Dashboard restarted at: ${url}`, level: "info" };
+	return {
+		message: logFile ? `Failed to restart dashboard; see ${logFile}` : "Failed to restart dashboard",
+		level: "error",
+	};
 }
 
 export function formatUpdateResult(outcome: UpdateOutcome): { message: string; level: OmpNotifyLevel } {
@@ -92,7 +96,8 @@ export function formatUpdateResult(outcome: UpdateOutcome): { message: string; l
 			};
 		case "updated": {
 			if (!outcome.alive) {
-				return { message: `Updated ${outcome.from} → ${outcome.to}; failed to restart dashboard`, level: "error" };
+				const detail = outcome.logFile ? `; see ${outcome.logFile}` : "";
+				return { message: `Updated ${outcome.from} → ${outcome.to}; failed to restart dashboard${detail}`, level: "error" };
 			}
 			if (outcome.from === outcome.to) {
 				return { message: `Already up to date (${outcome.to}); dashboard restarted at: ${outcome.url}`, level: "info" };
@@ -105,38 +110,48 @@ export function formatUpdateResult(outcome: UpdateOutcome): { message: string; l
 	}
 }
 
-async function startDashboard(): Promise<boolean> {
+async function startDashboard(): Promise<{ alive: boolean; logFile: string }> {
+	const logFile = resolveDashboardLogFile();
 	let alive = await probeExisting("127.0.0.1", DEFAULT_PORT);
-	if (alive) return true;
+	if (alive) return { alive, logFile };
 
 	// `new URL(..., import.meta.url).pathname` would per-cent-encode spaces
 	// (breaking a plugin installed under e.g. `~/My Plugins/…`) and yield a
 	// `/C:/…`-style path on Windows; `import.meta.dir` gives an OS-native path.
 	const cliPath = path.join(import.meta.dir, "..", "cli.ts");
+	let logReady = false;
+	try {
+		await fs.promises.mkdir(path.dirname(logFile), { recursive: true });
+		await Bun.write(logFile, "");
+		logReady = true;
+	} catch {}
 	try {
 		// `process.execPath` is unusable here: inside a compiled omp binary host,
 		// it points at that binary (which rejects `cli.ts --port ...` as unknown
 		// argv), not at a JS runtime that can execute the script.
 		const bunPath = Bun.which("bun") ?? "bun";
 		Bun.spawn([bunPath, cliPath, "--port", String(DEFAULT_PORT)], {
-			stdio: ["ignore", "ignore", "ignore"],
+			stdio: ["ignore", "ignore", logReady ? Bun.file(logFile) : "ignore"],
 			detached: true,
 		}).unref();
-	} catch {
-		// Fall through: the poll loop below reports failure via ctx.ui.notify.
+	} catch (error) {
+		try {
+			const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+			await Bun.write(logFile, `${detail}\n`);
+		} catch {}
 	}
 	for (let attempt = 0; attempt < POLL_ATTEMPTS && !alive; attempt++) {
 		await Bun.sleep(POLL_INTERVAL_MS);
 		alive = await probeExisting("127.0.0.1", DEFAULT_PORT);
 	}
-	return alive;
+	return { alive, logFile };
 }
 
 async function startMonitorHandler(ctx: OmpCtx): Promise<void> {
 	const url = formatUrl("127.0.0.1", DEFAULT_PORT);
-	const alive = await startDashboard();
+	const { alive, logFile } = await startDashboard();
 	if (!ctx.hasUI) return;
-	const result = formatMonitorResult(url, alive);
+	const result = formatMonitorResult(url, alive, logFile);
 	ctx.ui.notify(result.message, result.level);
 }
 
@@ -150,9 +165,9 @@ async function stopMonitorHandler(ctx: OmpCtx): Promise<void> {
 async function restartMonitorHandler(ctx: OmpCtx): Promise<void> {
 	const url = formatUrl("127.0.0.1", DEFAULT_PORT);
 	await stopExisting("127.0.0.1", DEFAULT_PORT);
-	const alive = await startDashboard();
+	const { alive, logFile } = await startDashboard();
 	if (!ctx.hasUI) return;
-	const result = formatRestartResult(url, alive);
+	const result = formatRestartResult(url, alive, logFile);
 	ctx.ui.notify(result.message, result.level);
 }
 
@@ -200,8 +215,8 @@ async function updateMonitorHandler(ctx: OmpCtx): Promise<void> {
 		// A mid-update read failure must not throw out of the command; fall back to `from`.
 	}
 
-	const alive = await startDashboard();
-	notify({ kind: "updated", from, to, url, alive });
+	const { alive, logFile } = await startDashboard();
+	notify({ kind: "updated", from, to, url, alive, logFile });
 }
 
 export default function ompPromptMonitor(pi: OmpApi): void {
