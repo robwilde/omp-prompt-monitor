@@ -256,4 +256,4 @@ main() {
   smoke_test
 }
 
-main "$@"
+main
