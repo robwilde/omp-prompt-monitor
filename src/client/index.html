@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>omp-prompt-monitor</title>
+<title>OMP Prompt Monitor</title>
+<link rel="icon" type="image/png" href="/icon.png" />
 <style>
 :root {
 	color-scheme: dark;
@@ -47,7 +48,8 @@ header {
 	gap: 1rem;
 	background: color-mix(in srgb, var(--surface) 88%, transparent);
 }
-.brand { min-width: 11rem; }
+.brand { min-width: 11rem; display: flex; align-items: center; gap: 0.55rem; }
+.brand-mark { width: 28px; height: 28px; flex: none; }
 .brand-kicker, .section-label {
 	font-family: ui-monospace, monospace;
 	font-size: 0.65rem;
@@ -187,8 +189,11 @@ footer { padding: 0.45rem 1rem; border-top: 1px solid var(--border); font: 0.66r
 <body>
 <header>
 	<div class="brand">
-		<div class="brand-kicker">omp / field notes</div>
-		<h1>prompt monitor</h1>
+		<img class="brand-mark" src="/icon.png" alt="" width="28" height="28" />
+		<div class="brand-text">
+			<div class="brand-kicker">omp / field notes</div>
+			<h1>prompt monitor</h1>
+		</div>
 	</div>
 	<input id="search" type="search" placeholder="Search the journal…" />
 	<select id="project-filter"><option value="">All projects</option></select>
