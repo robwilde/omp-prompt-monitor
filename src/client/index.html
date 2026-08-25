@@ -341,7 +341,9 @@ function renderSessions() {
 			state.selectedSessionId = session.id;
 			state.sessionDetail = await fetchSession(session.id);
 			render();
-			document.getElementById("prompts").scrollTop = 0;
+			const journal = document.getElementById("prompts");
+			journal.scrollTop = 0;
+			if (journal.scrollHeight <= journal.clientHeight) journal.scrollIntoView({ block: "start" });
 		});
 		container.appendChild(item);
 	}
