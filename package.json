@@ -13,5 +13,12 @@
   "omp": { "extensions": ["./src/extension/index.ts"] },
   "engines": { "bun": ">=1.3.14" },
   "files": ["src", "README.md"],
-  "devDependencies": { "@types/bun": "^1.3.14" }
+  "scripts": {
+    "lint": "oxlint --deny-warnings src test scripts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "bump": "bun scripts/bump-version.ts",
+    "check:version": "bun scripts/check-version-bump.ts"
+  },
+  "devDependencies": { "@types/bun": "^1.3.14", "oxlint": "1.80.0", "typescript": "5.9.3" }
 }
