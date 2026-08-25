@@ -94,21 +94,20 @@ main {
 	padding: 0.2rem 0.35rem 0.6rem;
 }
 .section-count { color: var(--dim); font: 0.7rem ui-monospace, monospace; }
-.project-item, .session-item {
+.project-item, .session-item, .prompt-row {
 		position: relative;
 		display: block;
 		width: 100%;
 		text-align: left;
 		background: transparent;
 		border: 1px solid transparent;
-		padding: 0.6rem 0.65rem 0.6rem 0.85rem;
 		border-radius: var(--radius);
-		cursor: pointer;
 		margin-bottom: 0.3rem;
 }
+.project-item, .session-item { padding: 0.6rem 0.65rem 0.6rem 0.85rem; cursor: pointer; }
 .project-item:hover, .session-item:hover { background: var(--surface); border-color: var(--border); }
 .project-item.active, .session-item.active { background: var(--surface-2); border-color: color-mix(in srgb, var(--pink) 60%, var(--border)); }
-.session-item::before {
+.session-item::before, .prompt-row::before {
 	content: "";
 	position: absolute;
 	left: 0;
@@ -123,7 +122,7 @@ main {
 .session-item.liveness-idle::before { background: var(--dim); }
 @keyframes heartbeat { 50% { opacity: 0.42; } }
 .project-title, .session-title { display: block; font-weight: 650; font-size: 0.84rem; }
-.project-meta, .session-meta { display: block; font-size: 0.72rem; color: var(--muted); margin-top: 0.22rem; }
+.project-meta, .session-meta, .prompt-meta { display: block; font-size: 0.72rem; color: var(--muted); margin-top: 0.22rem; }
 .chip, .status-pill {
 	display: inline-flex;
 	align-items: center;
@@ -147,17 +146,18 @@ main {
 .detail-heading { border-bottom: 1px solid var(--border); padding: 0.2rem 0.25rem 0.85rem; margin-bottom: 0.1rem; }
 .detail-title { font-family: ui-monospace, monospace; font-size: 0.95rem; font-weight: 700; margin-bottom: 0.45rem; }
 .detail-meta { display: flex; align-items: center; gap: 0.45rem; color: var(--muted); font-size: 0.72rem; }
-.prompt-row { position: relative; border-bottom: 1px solid var(--border); padding: 0.9rem 0.7rem 0.95rem 1rem; }
-.prompt-row::before { content: ""; position: absolute; left: 0.15rem; top: 0.9rem; bottom: 0.95rem; width: 3px; border-radius: 4px; background: var(--dim); }
+.prompt-row { padding: 0.7rem 0.8rem 0.75rem 0.85rem; }
 .prompt-row.prompt-user::before { background: var(--pink); }
 .prompt-row.prompt-reply { background: color-mix(in srgb, var(--cyan) 3%, transparent); }
 .prompt-row.prompt-reply::before { background: var(--cyan); }
-.prompt-head { display: flex; gap: 0.45rem; align-items: baseline; flex-wrap: wrap; font-size: 0.7rem; color: var(--muted); margin-bottom: 0.4rem; }
-.speaker { font: 700 0.64rem ui-monospace, monospace; letter-spacing: 0.09em; text-transform: uppercase; }
+.prompt-row:hover { background: var(--surface); border-color: var(--border); }
+.prompt-row.latest { background: var(--surface-2); border-color: color-mix(in srgb, var(--pink) 60%, var(--border)); }
+.prompt-head { display: flex; align-items: center; gap: 0.45rem; }
+.speaker { font: 700 0.8rem ui-monospace, monospace; letter-spacing: 0.08em; text-transform: uppercase; }
 .speaker.user { color: var(--pink); }
 .speaker.agent { color: var(--cyan); }
 .kind-badge { font-size: 0.62rem; padding: 0.13rem 0.35rem; border-radius: 4px; background: color-mix(in srgb, var(--pink) 12%, transparent); color: var(--pink); border: 1px solid color-mix(in srgb, var(--pink) 25%, transparent); }
-.prompt-row pre { white-space: pre-wrap; word-break: break-word; margin: 0; color: var(--text); font: 0.84rem/1.55 ui-monospace, monospace; }
+.prompt-row pre { white-space: pre-wrap; word-break: break-word; margin: 0.45rem 0 0; color: var(--text); font: 0.84rem/1.55 ui-monospace, monospace; }
 .prompt-reply pre { color: color-mix(in srgb, var(--text) 80%, var(--cyan)); }
 .copy-button { margin-left: auto; align-self: center; display: inline-flex; align-items: center; padding: 0.2rem; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0.55; transition: opacity 120ms ease, color 120ms ease; }
 .copy-button svg { width: 13px; height: 13px; display: block; }
@@ -337,7 +337,14 @@ function renderSessions() {
 		chip.style.marginLeft = "0.4rem";
 		titleRow.appendChild(chip);
 		item.append(titleRow, el("span", "session-meta", session.promptCount + " prompts · " + relativeTime(session.lastActivityAt) + " · " + session.repoLabel));
-		item.addEventListener("click", async () => { state.selectedSessionId = session.id; state.sessionDetail = await fetchSession(session.id); render(); });
+		item.addEventListener("click", async () => {
+			state.selectedSessionId = session.id;
+			state.sessionDetail = await fetchSession(session.id);
+			render();
+			const journal = document.getElementById("prompts");
+			journal.scrollTop = 0;
+			if (journal.scrollHeight <= journal.clientHeight) journal.scrollIntoView({ block: "start" });
+		});
 		container.appendChild(item);
 	}
 }
@@ -399,16 +406,20 @@ async function copyPrompt(prompt) {
 function renderPrompts() {
 	const container = document.getElementById("prompts");
 	container.replaceChildren();
+	const heading = el("div", "section-heading");
+	const count = el("span", "section-count", "0");
+	heading.append(el("span", "section-label", "Journal"), count);
+	container.appendChild(heading);
 	if (!state.sessionDetail) { container.appendChild(el("div", "empty", "Select a session to open its journal.")); return; }
 	const session = state.sessionDetail;
-	const heading = el("div", "detail-heading");
-	heading.appendChild(el("div", "detail-title", session.title));
+	const detail = el("div", "detail-heading");
+	detail.appendChild(el("div", "detail-title", session.title));
 	const meta = el("div", "detail-meta");
 	const status = el("span", "status-pill", session.tailStatus);
 	status.dataset.status = session.tailStatus;
 	meta.append(el("span", "chip " + session.liveness, session.liveness), status);
-	heading.appendChild(meta);
-	container.appendChild(heading);
+	detail.appendChild(meta);
+	container.appendChild(detail);
 	const roleFilters = el("div", "filter-bar");
 	for (const [value, label] of [["", "All"], ["you", "You"], ["agent", "Agent"]]) {
 		const button = el("button", "filter-button" + (state.promptRole === value ? " active" : ""), label);
@@ -419,14 +430,16 @@ function renderPrompts() {
 	}
 	container.appendChild(roleFilters);
 	const query = state.search.trim().toLowerCase();
-	const prompts = session.prompts.filter((prompt) => (!query || prompt.text.toLowerCase().includes(query)) && matchesRole(prompt, state.promptRole));
+	const prompts = session.prompts
+		.filter((prompt) => (!query || prompt.text.toLowerCase().includes(query)) && matchesRole(prompt, state.promptRole))
+		.reverse();
+	count.textContent = String(prompts.length);
 	if (prompts.length === 0) { container.appendChild(el("div", "empty", "No journal entries match.")); return; }
-	for (const prompt of prompts) {
+	for (const [index, prompt] of prompts.entries()) {
 		const isReply = prompt.kind === "reply";
-		const row = el("article", "prompt-row " + (isReply ? "prompt-reply" : "prompt-user"));
+		const row = el("article", "prompt-row " + (isReply ? "prompt-reply" : "prompt-user") + (index === 0 ? " latest" : ""));
 		const head = el("div", "prompt-head");
 		head.append(el("span", "speaker " + (isReply ? "agent" : "user"), isReply ? "Agent" : "You"));
-		head.append(el("span", null, new Date(prompt.at).toLocaleString()), el("span", null, relativeTime(prompt.at)));
 		if (prompt.kind === "skill") head.appendChild(el("span", "kind-badge", "skill"));
 		const key = promptKey(prompt);
 		const copied = state.copiedKey === key;
@@ -439,6 +452,7 @@ function renderPrompts() {
 		copyButton.addEventListener("click", () => { void copyPrompt(prompt); });
 		head.appendChild(copyButton);
 		row.appendChild(head);
+		row.appendChild(el("div", "prompt-meta", new Date(prompt.at).toLocaleString() + " · " + relativeTime(prompt.at) + " · " + formatChars(prompt.text.length)));
 		const pre = document.createElement("pre");
 		pre.textContent = prompt.text;
 		row.appendChild(pre);
