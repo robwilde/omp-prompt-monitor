@@ -151,6 +151,7 @@ main {
 .prompt-row.prompt-reply { background: color-mix(in srgb, var(--cyan) 3%, transparent); }
 .prompt-row.prompt-reply::before { background: var(--cyan); }
 .prompt-row:hover { background: var(--surface); border-color: var(--border); }
+.prompt-row.latest { background: var(--surface-2); border-color: color-mix(in srgb, var(--pink) 60%, var(--border)); }
 .prompt-head { display: flex; align-items: center; gap: 0.45rem; }
 .speaker { font: 700 0.8rem ui-monospace, monospace; letter-spacing: 0.08em; text-transform: uppercase; }
 .speaker.user { color: var(--pink); }
@@ -336,7 +337,12 @@ function renderSessions() {
 		chip.style.marginLeft = "0.4rem";
 		titleRow.appendChild(chip);
 		item.append(titleRow, el("span", "session-meta", session.promptCount + " prompts · " + relativeTime(session.lastActivityAt) + " · " + session.repoLabel));
-		item.addEventListener("click", async () => { state.selectedSessionId = session.id; state.sessionDetail = await fetchSession(session.id); render(); });
+		item.addEventListener("click", async () => {
+			state.selectedSessionId = session.id;
+			state.sessionDetail = await fetchSession(session.id);
+			render();
+			document.getElementById("prompts").scrollTop = 0;
+		});
 		container.appendChild(item);
 	}
 }
@@ -422,12 +428,14 @@ function renderPrompts() {
 	}
 	container.appendChild(roleFilters);
 	const query = state.search.trim().toLowerCase();
-	const prompts = session.prompts.filter((prompt) => (!query || prompt.text.toLowerCase().includes(query)) && matchesRole(prompt, state.promptRole));
+	const prompts = session.prompts
+		.filter((prompt) => (!query || prompt.text.toLowerCase().includes(query)) && matchesRole(prompt, state.promptRole))
+		.reverse();
 	count.textContent = String(prompts.length);
 	if (prompts.length === 0) { container.appendChild(el("div", "empty", "No journal entries match.")); return; }
-	for (const prompt of prompts) {
+	for (const [index, prompt] of prompts.entries()) {
 		const isReply = prompt.kind === "reply";
-		const row = el("article", "prompt-row " + (isReply ? "prompt-reply" : "prompt-user"));
+		const row = el("article", "prompt-row " + (isReply ? "prompt-reply" : "prompt-user") + (index === 0 ? " latest" : ""));
 		const head = el("div", "prompt-head");
 		head.append(el("span", "speaker " + (isReply ? "agent" : "user"), isReply ? "Agent" : "You"));
 		if (prompt.kind === "skill") head.appendChild(el("span", "kind-badge", "skill"));
