@@ -24,6 +24,11 @@ export function parseBaseVersion(text: string, ref: string): string {
 	return version;
 }
 
+/** `||` not `??`: Actions exports GITHUB_BASE_REF as an empty string outside pull_request events. */
+export function resolveBaseRef(value: string | undefined): string {
+	return value || "main";
+}
+
 export async function baseVersion(ref: string): Promise<string> {
 	await runGit(["fetch", "--no-tags", "--depth=1", "origin", ref]);
 	return parseBaseVersion(await runGit(["show", "FETCH_HEAD:package.json"]), ref);
@@ -45,7 +50,7 @@ export function evaluateBump(current: string, base: string, ref: string): BumpCh
 }
 
 if (import.meta.main) {
-	const ref = process.env.GITHUB_BASE_REF ?? "main";
+	const ref = resolveBaseRef(process.env.GITHUB_BASE_REF);
 	const check = evaluateBump(CURRENT_VERSION, await baseVersion(ref), ref);
 	if (!check.ok) {
 		console.error(check.message);

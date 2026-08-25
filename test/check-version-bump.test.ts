@@ -1,5 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { evaluateBump, parseBaseVersion, runGit } from "../scripts/check-version-bump";
+import { evaluateBump, parseBaseVersion, resolveBaseRef, runGit } from "../scripts/check-version-bump";
+
+describe("resolveBaseRef", () => {
+	test("falls back to main when the variable is unset", () => {
+		expect(resolveBaseRef(undefined)).toBe("main");
+	});
+
+	test("falls back to main when Actions exports an empty base ref", () => {
+		expect(resolveBaseRef("")).toBe("main");
+	});
+
+	test("uses the pull request base ref when present", () => {
+		expect(resolveBaseRef("release/2.x")).toBe("release/2.x");
+	});
+});
 
 describe("parseBaseVersion", () => {
 	test("reads the version field", () => {
