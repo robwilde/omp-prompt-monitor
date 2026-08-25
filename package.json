@@ -1,6 +1,6 @@
 {
   "name": "omp-prompt-monitor",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Local dashboard of Oh My Pi sessions and user prompts",
   "repository": { "type": "git", "url": "git+https://github.com/robwilde/omp-prompt-monitor.git" },
   "type": "module",
