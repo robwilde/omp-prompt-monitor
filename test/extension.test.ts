@@ -6,6 +6,7 @@ import {
 	formatUnknownAction,
 	formatUpdateResult,
 	parseMonitorAction,
+	restartDashboard,
 } from "../src/extension";
 import type { OmpNotifyLevel } from "../src/extension/omp-api";
 
@@ -96,6 +97,22 @@ describe("formatRestartResult", () => {
 	});
 });
 
+describe("restartDashboard", () => {
+	test("does not start when stopping the old dashboard fails", async () => {
+		let starts = 0;
+		const result = await restartDashboard(
+			async () => "failed",
+			async () => {
+				starts += 1;
+				return { alive: true, logFile: "/tmp/dashboard.log" };
+			},
+		);
+
+		expect(starts).toBe(0);
+		expect(result).toEqual({ alive: false });
+	});
+});
+
 describe("formatUnknownAction", () => {
 	test("bogus action", () => {
 		expect(formatUnknownAction("bogus")).toEqual({
@@ -112,10 +129,35 @@ describe("formatUpdateResult", () => {
 			level: "error",
 		});
 	});
-	test("dev-link", () => {
-		expect(formatUpdateResult({ kind: "dev-link", path: "/dev/checkout" })).toEqual({
-			message: "Plugin is linked to a dev checkout at /dev/checkout; update it with: git -C /dev/checkout pull",
+	test("dev-link with restarted dashboard", () => {
+		expect(
+			formatUpdateResult({
+				kind: "dev-link",
+				path: "/dev/checkout",
+				version: "0.1.8",
+				url: "http://127.0.0.1:7333",
+				alive: true,
+			}),
+		).toEqual({
+			message:
+				"Dev checkout at /dev/checkout (v0.1.8); dashboard restarted at: http://127.0.0.1:7333 · pull latest with: git -C /dev/checkout pull",
 			level: "warning",
+		});
+	});
+	test("dev-link with failed dashboard restart", () => {
+		expect(
+			formatUpdateResult({
+				kind: "dev-link",
+				path: "/dev/checkout",
+				version: "0.1.8",
+				url: "http://127.0.0.1:7333",
+				alive: false,
+				logFile: "/tmp/omp-prompt-monitor/dashboard.log",
+			}),
+		).toEqual({
+			message:
+				"Dev checkout at /dev/checkout (v0.1.8); failed to restart dashboard; see /tmp/omp-prompt-monitor/dashboard.log · pull latest with: git -C /dev/checkout pull",
+			level: "error",
 		});
 	});
 	test("omp-missing", () => {

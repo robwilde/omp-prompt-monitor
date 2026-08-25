@@ -31,7 +31,7 @@ export type MonitorAction = "start" | "stop" | "restart" | "update";
 
 export type UpdateOutcome =
 	| { kind: "not-installed"; slug: string }
-	| { kind: "dev-link"; path: string }
+	| { kind: "dev-link"; path: string; version: string; url: string; alive: boolean; logFile?: string }
 	| { kind: "omp-missing"; slug: string }
 	| { kind: "install-failed"; output: string }
 	| { kind: "updated"; from: string; to: string; url: string; alive: boolean; logFile?: string };
@@ -79,11 +79,20 @@ export function formatUpdateResult(outcome: UpdateOutcome): { message: string; l
 				message: `omp-prompt-monitor is not an installed omp plugin; run: omp install github:${outcome.slug}`,
 				level: "error",
 			};
-		case "dev-link":
+		case "dev-link": {
+			const pullHint = `git -C ${outcome.path} pull`;
+			if (!outcome.alive) {
+				const detail = outcome.logFile ? `; see ${outcome.logFile}` : "";
+				return {
+					message: `Dev checkout at ${outcome.path} (v${outcome.version}); failed to restart dashboard${detail} · pull latest with: ${pullHint}`,
+					level: "error",
+				};
+			}
 			return {
-				message: `Plugin is linked to a dev checkout at ${outcome.path}; update it with: git -C ${outcome.path} pull`,
+				message: `Dev checkout at ${outcome.path} (v${outcome.version}); dashboard restarted at: ${outcome.url} · pull latest with: ${pullHint}`,
 				level: "warning",
 			};
+		}
 		case "omp-missing":
 			return {
 				message: `omp CLI not found on PATH; run: omp install github:${outcome.slug}`,
@@ -147,6 +156,17 @@ async function startDashboard(): Promise<{ alive: boolean; logFile: string }> {
 	return { alive, logFile };
 }
 
+type DashboardStart = () => Promise<{ alive: boolean; logFile: string }>;
+
+export async function restartDashboard(
+	stop: () => Promise<StopOutcome> = () => stopExisting("127.0.0.1", DEFAULT_PORT),
+	start: DashboardStart = startDashboard,
+): Promise<{ alive: boolean; logFile?: string }> {
+	const stopOutcome = await stop();
+	if (stopOutcome === "failed") return { alive: false };
+	return start();
+}
+
 async function startMonitorHandler(ctx: OmpCtx): Promise<void> {
 	const url = formatUrl("127.0.0.1", DEFAULT_PORT);
 	const { alive, logFile } = await startDashboard();
@@ -193,7 +213,9 @@ async function updateMonitorHandler(ctx: OmpCtx): Promise<void> {
 	}
 
 	if (await isDevLink(entry.path)) {
-		notify({ kind: "dev-link", path: await fs.promises.realpath(entry.path) });
+		const devPath = await fs.promises.realpath(entry.path);
+		const { alive, logFile } = await restartDashboard();
+		notify({ kind: "dev-link", path: devPath, version: entry.version, url, alive, logFile });
 		return;
 	}
 
