@@ -1,0 +1,259 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_URL="${OMP_MONITOR_REPO:-https://github.com/robwilde/omp-prompt-monitor.git}"
+REF="${OMP_MONITOR_REF:-main}"
+INSTALL_DIR="${OMP_MONITOR_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/omp-prompt-monitor}"
+BIN_DIR="${OMP_MONITOR_BIN:-$HOME/.local/bin}"
+BUN_INSTALL="${OMP_MONITOR_BUN_HOME:-$HOME/.local/share/omp-prompt-monitor-bun}"
+LOCK_DIR="${INSTALL_DIR}.lock"
+MIN_BUN="1.3.14"
+MARKER="# omp-prompt-monitor (managed)"
+
+LOCK_HELD=0
+BUN_BIN=""
+PATH_CHANGED=0
+PATH_RC_FILE=""
+
+fail() {
+  echo "omp-prompt-monitor setup: $1" >&2
+  exit "${2:-1}"
+}
+
+release_lock() {
+  if [ "$LOCK_HELD" -eq 1 ]; then
+    rmdir "$LOCK_DIR" 2>/dev/null || true
+  fi
+}
+
+trap release_lock EXIT
+
+digits_or_zero() {
+  local v="${1//[!0-9]/}"
+  echo "${v:-0}"
+}
+
+version_ge_min() {
+  local major minor patch
+  IFS='.' read -r major minor patch <<<"$1"
+  major=$(digits_or_zero "$major")
+  minor=$(digits_or_zero "$minor")
+  patch=$(digits_or_zero "$patch")
+  local min_major=1 min_minor=3 min_patch=14
+  if ((10#$major > min_major)); then return 0; fi
+  if ((10#$major < min_major)); then return 1; fi
+  if ((10#$minor > min_minor)); then return 0; fi
+  if ((10#$minor < min_minor)); then return 1; fi
+  ((10#$patch >= min_patch))
+}
+
+require_environment() {
+  if [ -z "${BASH_VERSION:-}" ]; then
+    fail "this installer must run under bash (curl ... | bash)"
+  fi
+  if [ -z "${HOME:-}" ] || [ ! -d "$HOME" ] || [ ! -w "$HOME" ]; then
+    fail "HOME must be set to a writable directory"
+  fi
+  if [ "$(id -u)" -eq 0 ]; then
+    fail "do not run this installer as root"
+  fi
+  local os
+  os="$(uname -s)"
+  case "$os" in
+    Linux|Darwin) ;;
+    *) fail "unsupported operating system: $os (Linux and macOS only)" ;;
+  esac
+  local arch
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64|amd64|aarch64|arm64) ;;
+    *) fail "unsupported architecture: $arch (x86_64/amd64 or aarch64/arm64 only)" ;;
+  esac
+  if ! command -v git >/dev/null 2>&1; then
+    fail "git is required; install it with 'sudo dnf install git', 'sudo apt install git', or 'brew install git'"
+  fi
+  if ! command -v curl >/dev/null 2>&1; then
+    fail "curl is required; install it with 'sudo dnf install curl', 'sudo apt install curl', or 'brew install curl'"
+  fi
+  export GIT_TERMINAL_PROMPT=0
+}
+
+ensure_bun() {
+  if command -v bun >/dev/null 2>&1; then
+    local existing existing_version
+    existing="$(command -v bun)"
+    if existing_version="$("$existing" --version 2>/dev/null)" && version_ge_min "$existing_version"; then
+      BUN_BIN="$existing"
+      return 0
+    fi
+  fi
+  if [ -x "$BUN_INSTALL/bin/bun" ]; then
+    local managed_version
+    if managed_version="$("$BUN_INSTALL/bin/bun" --version 2>/dev/null)" && version_ge_min "$managed_version"; then
+      BUN_BIN="$BUN_INSTALL/bin/bun"
+      return 0
+    fi
+  fi
+  if [ "${OMP_MONITOR_SKIP_BUN:-0}" = "1" ]; then
+    fail "OMP_MONITOR_SKIP_BUN is set but no bun >= $MIN_BUN was found"
+  fi
+  if [ "$(uname -s)" = "Linux" ] && ! command -v unzip >/dev/null 2>&1; then
+    fail "unzip is required to install bun; install it with 'sudo dnf install unzip' or 'sudo apt install unzip'"
+  fi
+  mkdir -p "$BUN_INSTALL"
+  if ! curl -fsSL https://bun.sh/install | BUN_INSTALL="$BUN_INSTALL" bash >&2; then
+    fail "bun installation failed"
+  fi
+  if [ ! -x "$BUN_INSTALL/bin/bun" ]; then
+    fail "bun installation did not produce an executable at $BUN_INSTALL/bin/bun"
+  fi
+  local installed_version
+  installed_version="$("$BUN_INSTALL/bin/bun" --version 2>/dev/null)" || fail "unable to determine installed bun version"
+  if ! version_ge_min "$installed_version"; then
+    fail "installed bun $installed_version is older than the required $MIN_BUN"
+  fi
+  BUN_BIN="$BUN_INSTALL/bin/bun"
+}
+
+acquire_lock() {
+  mkdir -p "$(dirname "$INSTALL_DIR")"
+  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    fail "another install is already in progress, or a previous run left a stale lock at $LOCK_DIR; remove it manually if no install is running"
+  fi
+  LOCK_HELD=1
+}
+
+sync_source() {
+  local parent
+  parent="$(dirname "$INSTALL_DIR")"
+  if [ ! -e "$INSTALL_DIR" ]; then
+    local tmp_dir
+    tmp_dir="$(mktemp -d "${parent}/.omp-prompt-monitor.XXXXXX")"
+    if ! git clone --quiet --branch "$REF" --single-branch --no-recurse-submodules "$REPO_URL" "$tmp_dir"; then
+      rm -rf "$tmp_dir"
+      fail "failed to clone $REPO_URL ($REF)"
+    fi
+    mv "$tmp_dir" "$INSTALL_DIR"
+    return 0
+  fi
+  if [ -L "$INSTALL_DIR" ]; then
+    fail "$INSTALL_DIR is a symlink; refusing to modify it"
+  fi
+  if [ ! -d "$INSTALL_DIR" ]; then
+    fail "$INSTALL_DIR exists and is not a directory; refusing to modify it"
+  fi
+  if [ ! -d "$INSTALL_DIR/.git" ]; then
+    fail "$INSTALL_DIR is not a git checkout; refusing to modify it"
+  fi
+  local origin
+  origin="$(git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null || true)"
+  if [ "$origin" != "$REPO_URL" ]; then
+    fail "$INSTALL_DIR has origin '$origin', expected '$REPO_URL'; refusing to modify it"
+  fi
+  local branch
+  branch="$(git -C "$INSTALL_DIR" symbolic-ref --short -q HEAD || true)"
+  if [ "$branch" != "$REF" ]; then
+    fail "$INSTALL_DIR is on '${branch:-detached HEAD}', expected '$REF'; refusing to modify it"
+  fi
+  if [ -n "$(git -C "$INSTALL_DIR" status --porcelain)" ]; then
+    fail "$INSTALL_DIR has uncommitted or untracked changes; refusing to modify it"
+  fi
+  local git_dir state
+  git_dir="$(git -C "$INSTALL_DIR" rev-parse --absolute-git-dir)"
+  for state in rebase-merge rebase-apply MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD BISECT_LOG; do
+    if [ -e "$git_dir/$state" ]; then
+      fail "$INSTALL_DIR has an in-progress $state; refusing to modify it"
+    fi
+  done
+  if ! git -C "$INSTALL_DIR" fetch --quiet origin "$REF"; then
+    fail "failed to fetch $REPO_URL ($REF); existing install at $INSTALL_DIR left unchanged"
+  fi
+  if ! git -C "$INSTALL_DIR" merge --quiet --ff-only FETCH_HEAD; then
+    fail "failed to fast-forward $INSTALL_DIR; existing install left unchanged"
+  fi
+}
+
+write_launcher() {
+  mkdir -p "$BIN_DIR"
+  local tmp_launcher
+  tmp_launcher="$(mktemp "${BIN_DIR}/.omp-monitor.XXXXXX")"
+  {
+    printf '%s\n' '#!/usr/bin/env bash'
+    printf '%s\n' 'set -euo pipefail'
+    printf 'BUN=%q\n' "$BUN_BIN"
+    printf 'INSTALL_DIR=%q\n' "$INSTALL_DIR"
+    printf '%s\n' 'if [ -n "${OMP_MONITOR_BUN:-}" ]; then'
+    printf '%s\n' '  BUN="$OMP_MONITOR_BUN"'
+    printf '%s\n' 'fi'
+    printf '%s\n' 'if [ ! -x "$BUN" ]; then'
+    printf '%s\n' '  if command -v bun >/dev/null 2>&1; then'
+    printf '%s\n' '    BUN="$(command -v bun)"'
+    printf '%s\n' '  else'
+    printf '%s\n' '    echo "omp-monitor: bun not found; re-run the installer or set OMP_MONITOR_BUN" >&2'
+    printf '%s\n' '    exit 127'
+    printf '%s\n' '  fi'
+    printf '%s\n' 'fi'
+    printf '%s\n' 'exec "$BUN" run "$INSTALL_DIR/src/cli.ts" "$@"'
+  } >"$tmp_launcher"
+  chmod 0755 "$tmp_launcher"
+  mv "$tmp_launcher" "$BIN_DIR/omp-monitor"
+}
+
+ensure_path() {
+  case ":$PATH:" in
+    *":$BIN_DIR:"*) return 0 ;;
+  esac
+  local shell_name rc_file
+  shell_name="$(basename "${SHELL:-}")"
+  case "$shell_name" in
+    bash) rc_file="$HOME/.bashrc" ;;
+    zsh) rc_file="${ZDOTDIR:-$HOME}/.zshrc" ;;
+    fish) rc_file="$HOME/.config/fish/config.fish" ;;
+    *) rc_file="$HOME/.profile" ;;
+  esac
+  if [ -f "$rc_file" ] && grep -qF "$MARKER" "$rc_file" 2>/dev/null; then
+    return 0
+  fi
+  mkdir -p "$(dirname "$rc_file")"
+  {
+    printf '\n%s\n' "$MARKER"
+    if [ "$shell_name" = "fish" ]; then
+      printf 'fish_add_path "%s"\n' "$BIN_DIR"
+    else
+      printf 'export PATH="%s:$PATH"\n' "$BIN_DIR"
+    fi
+  } >>"$rc_file"
+  PATH_CHANGED=1
+  PATH_RC_FILE="$rc_file"
+}
+
+smoke_test() {
+  if ! "$BIN_DIR/omp-monitor" --help >/dev/null; then
+    fail "smoke test failed: $BIN_DIR/omp-monitor --help did not exit 0"
+  fi
+  echo "omp-prompt-monitor installed"
+  echo "  install dir: $INSTALL_DIR"
+  echo "  launcher:    $BIN_DIR/omp-monitor"
+  echo "  bun:         $BUN_BIN"
+  echo "  re-run this installer to upgrade to the latest $REF"
+  if [ "$PATH_CHANGED" -eq 1 ]; then
+    echo "  added $BIN_DIR to PATH in $PATH_RC_FILE; run 'exec \"\$SHELL\" -l' or open a new terminal"
+  fi
+  echo
+  echo "Usage:"
+  echo "  omp-monitor                       # http://127.0.0.1:7333"
+  echo "  omp-monitor --port 8080 --open    # custom port, opens your browser"
+  echo "  omp-monitor --json > snapshot.json"
+}
+
+main() {
+  require_environment
+  ensure_bun
+  acquire_lock
+  sync_source
+  write_launcher
+  ensure_path
+  smoke_test
+}
+
+main "$@"
