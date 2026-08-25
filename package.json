@@ -1,6 +1,6 @@
 {
   "name": "omp-prompt-monitor",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Local dashboard of Oh My Pi sessions and user prompts",
   "repository": { "type": "git", "url": "git+https://github.com/robwilde/omp-prompt-monitor.git" },
   "type": "module",
@@ -13,5 +13,12 @@
   "omp": { "extensions": ["./src/extension/index.ts"] },
   "engines": { "bun": ">=1.3.14" },
   "files": ["src", "README.md"],
-  "devDependencies": { "@types/bun": "^1.3.14" }
+  "scripts": {
+    "lint": "oxlint --deny-warnings src test scripts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "bump": "bun scripts/bump-version.ts",
+    "check:version": "bun scripts/check-version-bump.ts"
+  },
+  "devDependencies": { "@types/bun": "^1.3.14", "oxlint": "1.80.0", "typescript": "5.9.3" }
 }

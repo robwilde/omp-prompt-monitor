@@ -36,6 +36,7 @@ async function loadCache(cacheFile: string): Promise<Map<string, IndexedSession>
 
 /** Runs `worker` over `items` with bounded concurrency, preserving input order in the returned array. */
 async function mapWithConcurrency<T, R>(items: T[], concurrency: number, worker: (item: T) => Promise<R>): Promise<R[]> {
+	// oxlint-disable-next-line unicorn/no-new-array -- the argument is a length; every index is assigned before return
 	const results: R[] = new Array(items.length);
 	let nextIndex = 0;
 	async function runOne(): Promise<void> {
