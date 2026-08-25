@@ -8,19 +8,33 @@ A local dashboard for [Oh My Pi](https://github.com/can1357/oh-my-pi) sessions: 
 - The snapshot it serves (`/api/snapshot`, `/api/session/:id`) contains **full prompt text** read from `~/.omp/agent/sessions` (or your configured agent directory). Anything you typed to omp is readable through this server for as long as it runs.
 - `omp-monitor --json` prints the same data to stdout. Treat its output as sensitive — do not pipe it into logs, chat tools, or anywhere else you wouldn't paste your prompt history.
 
+## Install
+
+```bash
+curl -fsSL https://get.mrwilde.dev/setup | bash
+```
+
+Installs to `~/.local/share/omp-prompt-monitor`, puts an `omp-monitor` launcher in `~/.local/bin`, installs a user-scoped Bun `>=1.3.14` when needed, and adds `~/.local/bin` to your shell PATH if it is missing. Re-run the command to upgrade. Open a new terminal, or run `exec $SHELL -l`, the first time.
+
+Environment overrides: `OMP_MONITOR_REPO`, `OMP_MONITOR_REF` (default `main`), `OMP_MONITOR_HOME`, `OMP_MONITOR_BIN`, `OMP_MONITOR_BUN_HOME`, and `OMP_MONITOR_SKIP_BUN`.
+
+Inspect before executing:
+
+```bash
+curl -fsSL https://get.mrwilde.dev/setup -o /tmp/omp-monitor-setup
+less /tmp/omp-monitor-setup
+bash /tmp/omp-monitor-setup
+```
+
 ## Usage
 
-The hosted `curl | bash` installer (`setup` at the repository root) is not live yet — `https://get.mrwilde.dev/setup` has no DNS record. Until it is, run from a repo checkout:
-
 ```bash
-bun run src/cli.ts
-# Dashboard available at: http://127.0.0.1:7333
+omp-monitor                       # http://127.0.0.1:7333
+omp-monitor --port 8080 --open    # custom port, opens your browser
+omp-monitor --json > snapshot.json
 ```
 
-```bash
-bun run src/cli.ts --port 8080 --open    # custom port, opens your browser
-bun run src/cli.ts --json > snapshot.json
-```
+From a repo checkout without installing, use `bun run src/cli.ts`.
 
 ## Install as an omp extension
 
