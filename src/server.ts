@@ -9,6 +9,11 @@ import type { MonitorSnapshot } from "./core";
 // installed Bun runtime).
 const html = htmlBundle as unknown as string;
 
+const ICON_FILE = "icon.png";
+const ICON_ROUTE = `/${ICON_FILE}`;
+const ICON_CONTENT_TYPE = "image/png";
+const icon = Bun.file(new URL(`./client/${ICON_FILE}`, import.meta.url));
+
 export const MONITOR_HEADER = "x-omp-monitor";
 export const MONITOR_HEADER_VALUE = "1";
 export const DEFAULT_PORT = 7333;
@@ -143,6 +148,14 @@ export async function startServer(options?: {
 						}
 						const prompts = await loadSessionPrompts(session);
 						return withIdentityHeader(Response.json({ session: { ...session, prompts } }));
+					}
+
+					if (pathname === ICON_ROUTE) {
+						return withIdentityHeader(
+							new Response(icon, {
+								headers: { "content-type": ICON_CONTENT_TYPE, "cache-control": "public, max-age=86400" },
+							}),
+						);
 					}
 
 					return withIdentityHeader(new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } }));
