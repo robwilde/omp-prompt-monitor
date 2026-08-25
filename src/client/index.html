@@ -157,6 +157,13 @@ main {
 .kind-badge { font-size: 0.62rem; padding: 0.13rem 0.35rem; border-radius: 4px; background: color-mix(in srgb, var(--pink) 12%, transparent); color: var(--pink); border: 1px solid color-mix(in srgb, var(--pink) 25%, transparent); }
 .prompt-row pre { white-space: pre-wrap; word-break: break-word; margin: 0; color: var(--text); font: 0.84rem/1.55 ui-monospace, monospace; }
 .prompt-reply pre { color: color-mix(in srgb, var(--text) 80%, var(--cyan)); }
+.copy-button { margin-left: auto; align-self: center; display: inline-flex; align-items: center; padding: 0.2rem; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0.55; transition: opacity 120ms ease, color 120ms ease; }
+.copy-button svg { width: 13px; height: 13px; display: block; }
+.prompt-row:hover .copy-button, .copy-button:focus-visible { opacity: 1; }
+.copy-button:hover { color: var(--text); background: var(--surface-2); border-color: var(--border); }
+.copy-button.copied { color: var(--green); opacity: 1; }
+#copy-toast { position: fixed; right: 1rem; bottom: 2.4rem; z-index: 5; background: var(--surface-2); border: 1px solid var(--border-strong); color: var(--text); border-radius: var(--radius); padding: 0.35rem 0.6rem; font: 0.68rem ui-monospace, monospace; pointer-events: none; }
+#copy-toast:empty { display: none; }
 footer { padding: 0.45rem 1rem; border-top: 1px solid var(--border); font: 0.66rem ui-monospace, monospace; color: var(--dim); display: flex; justify-content: space-between; gap: 1rem; }
 #footer-update { color: var(--amber); }
 #footer-update:empty { display: none; }
@@ -196,10 +203,13 @@ footer { padding: 0.45rem 1rem; border-top: 1px solid var(--border); font: 0.66r
 	<span id="footer-update"></span>
 	<span id="footer-generated"></span>
 </footer>
+<div id="copy-toast" role="status" aria-live="polite"></div>
+<template id="icon-copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></template>
+<template id="icon-copied"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5" /></svg></template>
 <script>
 "use strict";
 
-const state = { snapshot: null, selectedProjectKey: "", selectedSessionId: null, sessionDetail: null, search: "", livenessFilter: "", promptRole: "", updateStatus: null, updateCheckedAt: 0 };
+const state = { snapshot: null, selectedProjectKey: "", selectedSessionId: null, sessionDetail: null, search: "", livenessFilter: "", promptRole: "", updateStatus: null, updateCheckedAt: 0, copiedKey: null };
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
 function relativeTime(ms) {
@@ -327,6 +337,60 @@ function renderSessions() {
 	}
 }
 
+const COPY_FEEDBACK_MS = 1400;
+const TOAST_MS = 2200;
+let copyTimer = null;
+let toastTimer = null;
+
+function promptKey(prompt) { return prompt.entryId || prompt.kind + ":" + prompt.at; }
+
+function copyTitle(prompt) {
+	if (prompt.kind === "reply") return "Copy this reply";
+	if (prompt.kind !== "skill") return "Copy this prompt";
+	return prompt.skillArgs ? "Copy your request (skill instructions excluded)" : "Copy the skill instructions";
+}
+
+function copyNote(prompt) {
+	if (prompt.kind !== "skill") return "";
+	return prompt.skillArgs ? " · your request only" : " · skill instructions";
+}
+
+function formatChars(count) { return count < 1000 ? count + " chars" : (count / 1000).toFixed(1) + "k chars"; }
+
+function showToast(message) {
+	const node = document.getElementById("copy-toast");
+	node.textContent = message;
+	if (toastTimer) clearTimeout(toastTimer);
+	toastTimer = setTimeout(() => { node.textContent = ""; toastTimer = null; }, TOAST_MS);
+}
+
+async function writeClipboard(text) {
+	if (navigator.clipboard && navigator.clipboard.writeText) {
+		try { await navigator.clipboard.writeText(text); return true; } catch (err) { console.error(err); }
+	}
+	const area = document.createElement("textarea");
+	area.value = text;
+	area.setAttribute("readonly", "");
+	area.style.position = "fixed";
+	area.style.top = "-1000px";
+	document.body.appendChild(area);
+	area.select();
+	let ok = false;
+	try { ok = document.execCommand("copy"); } catch (err) { console.error(err); }
+	area.remove();
+	return ok;
+}
+
+async function copyPrompt(prompt) {
+	const text = prompt.copyText ?? prompt.text;
+	if (!(await writeClipboard(text))) { showToast("Copy failed — select the text and press Ctrl+C"); return; }
+	state.copiedKey = promptKey(prompt);
+	if (copyTimer) clearTimeout(copyTimer);
+	copyTimer = setTimeout(() => { state.copiedKey = null; copyTimer = null; renderPrompts(); }, COPY_FEEDBACK_MS);
+	showToast("Copied " + formatChars(text.length) + copyNote(prompt));
+	renderPrompts();
+}
+
 function renderPrompts() {
 	const container = document.getElementById("prompts");
 	container.replaceChildren();
@@ -359,6 +423,16 @@ function renderPrompts() {
 		head.append(el("span", "speaker " + (isReply ? "agent" : "user"), isReply ? "Agent" : "You"));
 		head.append(el("span", null, new Date(prompt.at).toLocaleString()), el("span", null, relativeTime(prompt.at)));
 		if (prompt.kind === "skill") head.appendChild(el("span", "kind-badge", "skill"));
+		const key = promptKey(prompt);
+		const copied = state.copiedKey === key;
+		const copyButton = el("button", "copy-button" + (copied ? " copied" : ""));
+		copyButton.type = "button";
+		copyButton.appendChild(document.getElementById(copied ? "icon-copied" : "icon-copy").content.cloneNode(true));
+		const copyLabel = copied ? "Copied" : copyTitle(prompt);
+		copyButton.title = copyLabel;
+		copyButton.setAttribute("aria-label", copyLabel);
+		copyButton.addEventListener("click", () => { void copyPrompt(prompt); });
+		head.appendChild(copyButton);
 		row.appendChild(head);
 		const pre = document.createElement("pre");
 		pre.textContent = prompt.text;

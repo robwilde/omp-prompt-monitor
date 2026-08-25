@@ -6,6 +6,8 @@ import type { IndexedSession } from "./index-store";
 import { createIndexStore } from "./index-store";
 import { parseSessionText, type PromptRow, type TailStatus, type TitleSource } from "./journal";
 import { resolveSessionsRoot } from "./paths";
+import type { PortablePromptRow } from "./portable-prompt";
+import { withPortableText } from "./portable-prompt";
 
 export type Liveness = "live" | "recent" | "idle";
 export const RECENT_WINDOW_MS = 15 * 60 * 1000;
@@ -78,12 +80,12 @@ async function buildSessionRow(session: IndexedSession, heartbeats: Map<string, 
 	};
 }
 
-export async function loadSessionPrompts(session: Pick<SessionRow, "file" | "prompts">): Promise<PromptRow[]> {
+export async function loadSessionPrompts(session: Pick<SessionRow, "file" | "prompts">): Promise<PortablePromptRow[]> {
 	try {
 		const parsed = parseSessionText(await Bun.file(session.file).text());
-		return parsed?.prompts ?? session.prompts;
+		return withPortableText(parsed?.prompts ?? session.prompts);
 	} catch {
-		return session.prompts;
+		return withPortableText(session.prompts);
 	}
 }
 

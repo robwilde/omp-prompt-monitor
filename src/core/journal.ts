@@ -9,6 +9,8 @@ export interface PromptRow {
 	at: number;
 	/** True when `at` came from the journal entry's ISO timestamp, not the message. */
 	atFromEntry: boolean;
+	/** For `kind: "skill"`: the user's own request, which omp stores alongside the skill body. */
+	skillArgs?: string;
 }
 
 export type TitleSource = "auto" | "user" | "derived" | "none";
@@ -45,6 +47,12 @@ interface JournalRecord {
 	customType?: string;
 	attribution?: string;
 	content?: unknown;
+	details?: {
+		name?: string;
+		path?: string;
+		args?: string;
+		lineCount?: number;
+	};
 	message?: {
 		role?: string;
 		content?: unknown;
@@ -182,6 +190,7 @@ export function parseSessionText(text: string, options?: { includeReplies?: bool
 		} else if (record.type === "custom_message" && record.customType === "skill-prompt" && record.attribution === "user") {
 			const promptText = extractText(record.content).trim();
 			if (promptText.length === 0) continue;
+			const skillArgs = typeof record.details?.args === "string" ? record.details.args.trim() : "";
 			prompts.push({
 				entryId: record.id ?? "",
 				parentId: record.parentId ?? null,
@@ -189,6 +198,7 @@ export function parseSessionText(text: string, options?: { includeReplies?: bool
 				text: promptText,
 				at: Date.parse(record.timestamp ?? ""),
 				atFromEntry: true,
+				...(skillArgs ? { skillArgs } : {}),
 			});
 		}
 	}

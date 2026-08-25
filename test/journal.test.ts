@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseSessionText } from "../src/core/journal";
+import { parseSessionText } from "../src/core";
 
 describe("parseSessionText", () => {
 	test("slot title wins over header, prompt selection excludes noise, tracks malformed lines", async () => {
@@ -43,5 +43,17 @@ describe("parseSessionText", () => {
 
 	test("non-JSON input is rejected", () => {
 		expect(parseSessionText("not json")).toBeNull();
+	});
+
+	test("captures the user's request from skill prompts, keeping the raw body in text", async () => {
+		const text = await Bun.file(new URL("./fixtures/skill-args.jsonl", import.meta.url)).text();
+		const parsed = parseSessionText(text);
+
+		expect(parsed).not.toBeNull();
+		expect(parsed?.prompts[1]?.skillArgs).toBe("Plan the copy button work.");
+		expect(parsed?.prompts[1]?.text.startsWith("[IMPORTANT:")).toBe(true);
+		expect(parsed?.prompts[2]?.skillArgs).toBeUndefined();
+		expect(parsed?.prompts[3]?.skillArgs).toBeUndefined();
+		expect(parsed?.prompts[0]?.text).toContain("<attachment>");
 	});
 });
