@@ -13,8 +13,11 @@ export interface IndexStore {
 	refresh(): Promise<IndexedSession[]>;
 }
 
+/** Bump whenever `parseSessionText` output changes, so caches built by an older parser are discarded and re-parsed. */
+const CACHE_VERSION = 2;
+
 interface CacheFile {
-	v: 1;
+	v: typeof CACHE_VERSION;
 	entries: IndexedSession[];
 }
 
@@ -25,7 +28,7 @@ async function loadCache(cacheFile: string): Promise<Map<string, IndexedSession>
 	const cache = new Map<string, IndexedSession>();
 	try {
 		const parsed = (await Bun.file(cacheFile).json()) as CacheFile;
-		if (parsed.v === 1 && Array.isArray(parsed.entries)) {
+		if (parsed.v === CACHE_VERSION && Array.isArray(parsed.entries)) {
 			for (const entry of parsed.entries) cache.set(entry.file, entry);
 		}
 	} catch {
@@ -108,7 +111,7 @@ export function createIndexStore(options?: {
 			return indexed;
 		}
 
-		const payload: CacheFile = { v: 1, entries: indexed };
+		const payload: CacheFile = { v: CACHE_VERSION, entries: indexed };
 		await Bun.write(cacheFile, JSON.stringify(payload));
 
 		return indexed;
