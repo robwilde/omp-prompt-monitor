@@ -34,7 +34,7 @@ describe("buildSnapshot", () => {
 		expect(session?.prompts).toHaveLength(2);
 		expect(session?.prompts.some((prompt) => prompt.kind === "reply")).toBe(false);
 		const cache = JSON.parse(await Bun.file(path.join(stateHome, "omp-prompt-monitor", "index-cache.json")).text());
-		expect(cache.v).toBe(1);
+		expect(cache.v).toBe(2);
 		expect(cache.entries[0].prompts).toHaveLength(2);
 		expect(cache.entries[0].prompts.some((prompt: { kind: string }) => prompt.kind === "reply")).toBe(false);
 

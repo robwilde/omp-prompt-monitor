@@ -174,7 +174,8 @@ export function parseSessionText(text: string, options?: { includeReplies?: bool
 			}
 			if (message.role !== "user") continue;
 			if (message.synthetic === true) continue;
-			if (message.steering === true) continue;
+			// `steering` is a delivery-queue flag: omp stamps the user's own mid-stream input with it
+			// (attribution "user"). Agent-authored steers carry attribution "agent" and are dropped here.
 			if (message.attribution === "agent") continue;
 			const promptText = extractText(message.content).trim();
 			if (promptText.length === 0) continue;

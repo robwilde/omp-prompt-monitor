@@ -25,7 +25,9 @@ function isProcessAlive(pid: number): boolean {
 	}
 }
 
-export async function writeHeartbeat(hb: Omit<Heartbeat, "v" | "lastSeenAt">): Promise<void> {
+export type HeartbeatInput = Omit<Heartbeat, "v" | "lastSeenAt">;
+
+export async function writeHeartbeat(hb: HeartbeatInput): Promise<void> {
 	const payload: Heartbeat = { ...hb, v: 1, lastSeenAt: Date.now() };
 	const file = path.join(resolveHeartbeatDir(), `${hb.sessionId}.json`);
 	await Bun.write(file, JSON.stringify(payload));

@@ -24,8 +24,11 @@ export interface OmpCtx {
 	setInterval(cb: () => void, ms: number): unknown;
 }
 
+/** Session lifecycle events this package hooks. `session_start` fires once per session runtime (main session, each in-process subagent, each ACP session), not on in-process switches; `/new`, `/resume`, fork, and `/btw` fire `session_switch`/`session_branch` after the session manager has already moved to the new session. */
+export type OmpSessionEvent = "session_start" | "session_switch" | "session_branch" | "session_shutdown";
+
 export interface OmpApi {
-	on(event: "session_start" | "session_shutdown", handler: (event: unknown, ctx: OmpCtx) => unknown): void;
+	on(event: OmpSessionEvent, handler: (event: unknown, ctx: OmpCtx) => unknown): void;
 	registerCommand(
 		name: string,
 		options: { description?: string; handler: (args: string, ctx: OmpCtx) => Promise<void> },

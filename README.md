@@ -54,7 +54,7 @@ omp install github:robwilde/omp-prompt-monitor
 
 ## How it works
 
-- **Reader** (`src/core/journal.ts`): parses one session `.jsonl` file — title slot, header, and every real user prompt (typed messages and skill invocations), skipping synthetic/steering/agent-attributed noise.
+- **Reader** (`src/core/journal.ts`): parses one session `.jsonl` file — title slot, header, and every real user prompt (typed messages, including ones typed mid-stream, and skill invocations), skipping synthetic/agent-attributed noise.
 - **Index** (`src/core/index-store.ts`): incrementally re-parses only files whose size/mtime changed since the last run, cached at `<state dir>/index-cache.json`.
 - **Snapshot** (`src/core/view.ts`): the reader → snapshot boundary. Pure and serializable, so a future remote collector can reuse it without restructuring anything upstream.
 - **Server** (`src/server.ts`): serves the snapshot and the HTML client over `/api/snapshot` and `/api/session/:id`, with an identity header so a second `omp-monitor` invocation detects and reuses an already-running instance instead of binding a second port.
