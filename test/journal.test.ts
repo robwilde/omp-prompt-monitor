@@ -9,11 +9,15 @@ describe("parseSessionText", () => {
 		expect(parsed).not.toBeNull();
 		expect(parsed?.title).toBe("user renamed");
 		expect(parsed?.titleSource).toBe("user");
-		expect(parsed?.prompts.length).toBe(2);
+		expect(parsed?.prompts.length).toBe(3);
 		expect(parsed?.prompts[0]?.kind).toBe("typed");
 		expect(parsed?.prompts[0]?.at).toBe(1767225600000);
 		expect(parsed?.prompts[0]?.atFromEntry).toBe(false);
-		expect(parsed?.prompts[1]?.kind).toBe("skill");
+		// User input typed mid-stream is stamped steering:true by omp but is still the user's prompt;
+		// the agent-authored steer (attribution "agent") stays excluded.
+		expect(parsed?.prompts[1]?.text).toBe("typed while the agent was streaming");
+		expect(parsed?.prompts[1]?.kind).toBe("typed");
+		expect(parsed?.prompts[2]?.kind).toBe("skill");
 		expect(parsed?.malformedLines).toBe(1);
 	});
 

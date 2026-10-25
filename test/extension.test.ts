@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import {
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import ompPromptMonitor, {
 	formatMonitorResult,
 	formatRestartResult,
 	formatStopResult,
@@ -8,7 +11,8 @@ import {
 	parseMonitorAction,
 	restartDashboard,
 } from "../src/extension";
-import type { OmpNotifyLevel } from "../src/extension/omp-api";
+import { createHeartbeatTracker } from "../src/extension/heartbeat-tracker";
+import type { OmpCtx, OmpNotifyLevel } from "../src/extension/omp-api";
 
 describe("formatMonitorResult", () => {
 	test("success payload matches the /stats dashboard line", () => {
@@ -212,5 +216,108 @@ describe("formatUpdateResult", () => {
 				"Updated 0.1.0 → 0.2.0; dashboard restarted at: http://127.0.0.1:7333 · restart omp to load the updated extension",
 			level: "info",
 		});
+	});
+});
+
+describe("heartbeat session tracking", () => {
+	test("/new swaps the heartbeat to the new session id immediately and shutdown leaves none behind", async () => {
+		const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-monitor-hb-"));
+		const previousState = process.env.XDG_STATE_HOME;
+		process.env.XDG_STATE_HOME = stateDir;
+		try {
+			const handlers = new Map<string, (event: unknown, ctx: OmpCtx) => unknown>();
+			ompPromptMonitor({
+				on: (event, handler) => void handlers.set(event, handler),
+				registerCommand: () => {},
+			});
+			let sessionId = "session-a";
+			const ctx: OmpCtx = {
+				ui: { notify: () => {} },
+				hasUI: false,
+				sessionManager: {
+					getSessionId: () => sessionId,
+					getSessionFile: () => `/tmp/${sessionId}.jsonl`,
+					getCwd: () => "/tmp",
+				},
+				setInterval: () => undefined,
+			};
+			const heartbeatDir = path.join(stateDir, "omp-prompt-monitor", "heartbeats");
+			const files = () => (fs.existsSync(heartbeatDir) ? fs.readdirSync(heartbeatDir).sort() : []);
+			// Heartbeat writes/removals are fire-and-forget; yield to real I/O until the directory reaches the expected state.
+			const settleTo = async (expected: string[]) => {
+				for (let i = 0; i < 500 && files().join() !== expected.join(); i++) await fs.promises.stat(stateDir);
+				expect(files()).toEqual(expected);
+			};
+
+			handlers.get("session_start")?.({}, ctx);
+			await settleTo(["session-a.json"]);
+
+			sessionId = "session-b";
+			handlers.get("session_switch")?.({}, ctx);
+			await settleTo(["session-b.json"]);
+
+			await handlers.get("session_shutdown")?.({}, ctx);
+			expect(files()).toEqual([]);
+		} finally {
+			if (previousState === undefined) delete process.env.XDG_STATE_HOME;
+			else process.env.XDG_STATE_HOME = previousState;
+			fs.rmSync(stateDir, { recursive: true, force: true });
+		}
+	});
+
+	test("a write for the previous session held in flight across a switch cannot recreate its file", async () => {
+		const files = new Set<string>();
+		const log: string[] = [];
+		const gate = Promise.withResolvers<void>();
+		const started = Promise.withResolvers<void>();
+		const tracker = createHeartbeatTracker({
+			write: async (hb) => {
+				log.push(`write:${hb.sessionId}:start`);
+				if (hb.sessionId === "a") {
+					started.resolve();
+					await gate.promise; // hold A's write in flight
+				}
+				files.add(hb.sessionId);
+				log.push(`write:${hb.sessionId}:done`);
+			},
+			remove: async (id) => {
+				files.delete(id);
+				log.push(`remove:${id}`);
+			},
+		});
+		const build = (id: string) => (startedAt: number) => ({
+			sessionId: id,
+			sessionFile: `/tmp/${id}.jsonl`,
+			cwd: "/tmp",
+			pid: 1,
+			host: "h",
+			startedAt,
+		});
+
+		tracker.beat("a", build("a"));
+		await started.promise; // A's write is now blocked
+		tracker.beat("b", build("b")); // switch: remove-A and write-B queue behind A's write
+		expect(log).toEqual(["write:a:start"]);
+		gate.resolve();
+		// B's heartbeat is the observable signal that the switch finished; only B remains.
+		for (let i = 0; i < 100 && !files.has("b"); i++) await Promise.resolve();
+		expect(log).toEqual(["write:a:start", "write:a:done", "remove:a", "write:b:start", "write:b:done"]);
+		expect([...files]).toEqual(["b"]);
+
+		await tracker.shutdown([]);
+		expect(log.at(-1)).toBe("remove:b");
+		expect([...files]).toEqual([]);
+	});
+
+	test("shutdown stops waiting after the drain timeout when a write hangs", async () => {
+		const hung = Promise.withResolvers<void>();
+		const tracker = createHeartbeatTracker({ write: () => hung.promise, remove: async () => {} }, 20);
+		tracker.beat("a", (startedAt) => ({ sessionId: "a", sessionFile: "/tmp/a.jsonl", cwd: "/tmp", pid: 1, host: "h", startedAt }));
+
+		const began = performance.now();
+		await tracker.shutdown([]);
+
+		expect(performance.now() - began).toBeLessThan(1000);
+		hung.resolve();
 	});
 });
