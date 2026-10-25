@@ -4,4 +4,5 @@ export * from "./index-store";
 export * from "./journal";
 export * from "./paths";
 export * from "./portable-prompt";
+export * from "./recap";
 export * from "./view";

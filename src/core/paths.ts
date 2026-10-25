@@ -78,6 +78,15 @@ export function resolveSessionsRoot(env: Env = process.env): string {
 	return path.join(agentDir, "sessions");
 }
 
+/**
+ * Mirrors `getHistoryDbPath()` (omp `packages/utils/src/dirs.ts`): history.db and
+ * `sessions/` both resolve via `agentSubdir(..., "data")`, so they share a parent
+ * under every profile/override/XDG combination.
+ */
+export function resolveHistoryDb(env: Env = process.env): string {
+	return path.join(path.dirname(resolveSessionsRoot(env)), "history.db");
+}
+
 /** This package's own state directory — never inside omp's directories. */
 export function resolveMonitorStateDir(env: Env = process.env): string {
 	const home = os.homedir();
