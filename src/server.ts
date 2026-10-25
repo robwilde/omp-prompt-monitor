@@ -1,5 +1,5 @@
 import htmlBundle from "./client/index.html" with { type: "text" };
-import { buildSnapshot, loadSessionPrompts } from "./core";
+import { buildSnapshot, loadLatestRecap, loadSessionPrompts } from "./core";
 import { getUpdateStatus } from "./update";
 import type { MonitorSnapshot } from "./core";
 
@@ -147,7 +147,8 @@ export async function startServer(options?: {
 							return withIdentityHeader(Response.json({ error: "unknown session" }, { status: 404 }));
 						}
 						const prompts = await loadSessionPrompts(session);
-						return withIdentityHeader(Response.json({ session: { ...session, prompts } }));
+						const recap = loadLatestRecap(session.id);
+						return withIdentityHeader(Response.json({ session: { ...session, prompts, recap } }));
 					}
 
 					if (pathname === ICON_ROUTE) {
