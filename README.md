@@ -5,7 +5,7 @@ A local dashboard for [Oh My Pi](https://github.com/can1357/oh-my-pi) sessions: 
 ## Security
 
 - The dashboard server binds to 127.0.0.1 by default. Passing --host can expose it to other interfaces.
-- The snapshot it serves (`/api/snapshot`, `/api/session/:id`) contains **full prompt text** read from `~/.omp/agent/sessions` (or your configured agent directory). Anything you typed to omp is readable through this server for as long as it runs.
+- The snapshot it serves (`/api/snapshot`, `/api/session/:id`) contains **full prompt text** read from `~/.omp/agent/sessions` (or your configured agent directory). Anything you typed to omp is readable through this server for as long as it runs. `/api/session/:id` additionally returns the session's latest omp **recap** (full text) read from omp's `history.db`.
 - `omp-monitor --json` prints the same data to stdout. Treat its output as sensitive — do not pipe it into logs, chat tools, or anywhere else you wouldn't paste your prompt history.
 
 ## Install
@@ -56,6 +56,7 @@ omp install github:robwilde/omp-prompt-monitor
 
 - **Reader** (`src/core/journal.ts`): parses one session `.jsonl` file — title slot, header, and every real user prompt (typed messages, including ones typed mid-stream, and skill invocations), skipping synthetic/agent-attributed noise.
 - **Index** (`src/core/index-store.ts`): incrementally re-parses only files whose size/mtime changed since the last run, cached at `<state dir>/index-cache.json`.
+- **Recap** (`src/core/recap.ts`): opens omp's `history.db` read-only and returns a session's newest idle recap in full (omp's CLI truncates it on screen). The session detail's Journal section shows it as a "Latest recap" block; sessions with no recap show nothing.
 - **Snapshot** (`src/core/view.ts`): the reader → snapshot boundary. Pure and serializable, so a future remote collector can reuse it without restructuring anything upstream.
 - **Server** (`src/server.ts`): serves the snapshot and the HTML client over `/api/snapshot` and `/api/session/:id`, with an identity header so a second `omp-monitor` invocation detects and reuses an already-running instance instead of binding a second port.
 - **Extension** (`src/extension/index.ts`): a thin omp plugin that writes a heartbeat file for the current session (so the dashboard can distinguish "live" from merely "recently active") and adds the `/monitor` command.
