@@ -1,30 +1,28 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { HEARTBEAT_INTERVAL_MS, removeHeartbeat, resolveDashboardLogFile, writeHeartbeat } from "../core";
+import { HEARTBEAT_INTERVAL_MS, type HeartbeatInput, removeHeartbeat, resolveDashboardLogFile, writeHeartbeat } from "../core";
 import { DEFAULT_PORT, formatUrl, probeExisting, type StopOutcome, stopExisting } from "../server";
 import { repoSlug } from "../update";
+import { createHeartbeatTracker } from "./heartbeat-tracker";
 import type { OmpApi, OmpCtx, OmpNotifyLevel } from "./omp-api";
 import { findInstalledPlugin, isDevLink, runInstall } from "./update";
 
 const POLL_ATTEMPTS = 20;
 const POLL_INTERVAL_MS = 100;
 
-async function sendHeartbeat(ctx: OmpCtx, startedAt: number): Promise<void> {
+/** Captures the session identity synchronously so a queued write can never pick up a later session's id. */
+function snapshotHeartbeat(ctx: OmpCtx, startedAt: number): HeartbeatInput | undefined {
 	const sessionFile = ctx.sessionManager.getSessionFile();
-	if (sessionFile === undefined) return;
-	try {
-		await writeHeartbeat({
-			sessionId: ctx.sessionManager.getSessionId(),
-			sessionFile,
-			cwd: ctx.sessionManager.getCwd(),
-			pid: process.pid,
-			host: os.hostname(),
-			startedAt,
-		});
-	} catch {
-		// Best-effort: a missed heartbeat writing just means one stale window in the dashboard.
-	}
+	if (sessionFile === undefined) return undefined;
+	return {
+		sessionId: ctx.sessionManager.getSessionId(),
+		sessionFile,
+		cwd: ctx.sessionManager.getCwd(),
+		pid: process.pid,
+		host: os.hostname(),
+		startedAt,
+	};
 }
 
 export type MonitorAction = "start" | "stop" | "restart" | "update";
@@ -242,22 +240,24 @@ async function updateMonitorHandler(ctx: OmpCtx): Promise<void> {
 }
 
 export default function ompPromptMonitor(pi: OmpApi): void {
+	const tracker = createHeartbeatTracker({ write: writeHeartbeat, remove: removeHeartbeat });
+
+	// Reads the live session identity on every beat: `session_start` fires once per session
+	// runtime, while /new, /resume and fork swap the session under the same ctx.
+	const beat = (ctx: OmpCtx): void => {
+		tracker.beat(ctx.sessionManager.getSessionId(), (startedAt) => snapshotHeartbeat(ctx, startedAt));
+	};
+
 	pi.on("session_start", (_event, ctx) => {
 		if (ctx.sessionManager.getSessionFile() === undefined) return;
-		const startedAt = Date.now();
-		void sendHeartbeat(ctx, startedAt);
-		ctx.setInterval(() => {
-			void sendHeartbeat(ctx, startedAt);
-		}, HEARTBEAT_INTERVAL_MS);
+		beat(ctx);
+		ctx.setInterval(() => beat(ctx), HEARTBEAT_INTERVAL_MS);
 	});
 
-	pi.on("session_shutdown", async (_event, ctx) => {
-		try {
-			await removeHeartbeat(ctx.sessionManager.getSessionId());
-		} catch {
-			// Best-effort: teardown has a 2000ms budget; a stale heartbeat file self-expires anyway.
-		}
-	});
+	pi.on("session_switch", (_event, ctx) => beat(ctx));
+	pi.on("session_branch", (_event, ctx) => beat(ctx));
+
+	pi.on("session_shutdown", (_event, ctx) => tracker.shutdown([ctx.sessionManager.getSessionId()]));
 
 	pi.registerCommand("monitor", {
 		description: "Open the session prompt dashboard (stop | restart | update)",
