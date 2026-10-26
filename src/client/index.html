@@ -159,6 +159,7 @@ main {
 .kind-badge { font-size: 0.62rem; padding: 0.13rem 0.35rem; border-radius: 4px; background: color-mix(in srgb, var(--pink) 12%, transparent); color: var(--pink); border: 1px solid color-mix(in srgb, var(--pink) 25%, transparent); }
 .prompt-row pre { white-space: pre-wrap; word-break: break-word; margin: 0.45rem 0 0; color: var(--text); font: 0.84rem/1.55 ui-monospace, monospace; }
 .prompt-reply pre { color: color-mix(in srgb, var(--text) 80%, var(--cyan)); }
+.recap-block { margin-top: 0.7rem; }
 .copy-button { margin-left: auto; align-self: center; display: inline-flex; align-items: center; padding: 0.2rem; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0.55; transition: opacity 120ms ease, color 120ms ease; }
 .copy-button svg { width: 13px; height: 13px; display: block; }
 .prompt-row:hover .copy-button, .copy-button:focus-visible { opacity: 1; }
@@ -420,6 +421,18 @@ function renderPrompts() {
 	meta.append(el("span", "chip " + session.liveness, session.liveness), status);
 	detail.appendChild(meta);
 	container.appendChild(detail);
+	const recap = session.recap;
+	if (recap) {
+		const block = el("section", "prompt-row prompt-reply recap-block");
+		const recapHead = el("div", "prompt-head");
+		recapHead.append(el("span", "speaker agent", "Latest recap"));
+		block.appendChild(recapHead);
+		block.appendChild(el("div", "prompt-meta", new Date(recap.createdAt).toLocaleString() + " · " + relativeTime(recap.createdAt) + " · " + formatChars(recap.text.length)));
+		const recapPre = document.createElement("pre");
+		recapPre.textContent = recap.text;
+		block.appendChild(recapPre);
+		container.appendChild(block);
+	}
 	const roleFilters = el("div", "filter-bar");
 	for (const [value, label] of [["", "All"], ["you", "You"], ["agent", "Agent"]]) {
 		const button = el("button", "filter-button" + (state.promptRole === value ? " active" : ""), label);

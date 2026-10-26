@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resolveSessionsRoot } from "../src/core/paths";
+import { resolveHistoryDb, resolveSessionsRoot } from "../src/core/paths";
 
 const home = os.homedir();
 
@@ -93,6 +93,56 @@ describe("resolveSessionsRoot", () => {
 			expect(resolveSessionsRoot({ XDG_DATA_HOME: xdg, OMP_PROFILE: "other" })).toBe(
 				path.join(home, ".omp", "profiles", "other", "agent", "sessions"),
 			);
+		});
+	});
+});
+
+describe("resolveHistoryDb", () => {
+	test("empty env resolves to ~/.omp/agent/history.db", () => {
+		expect(resolveHistoryDb({})).toBe(path.join(home, ".omp", "agent", "history.db"));
+	});
+
+	test("PI_CODING_AGENT_DIR overrides the agent dir", () => {
+		expect(resolveHistoryDb({ PI_CODING_AGENT_DIR: "/custom" })).toBe(path.join("/custom", "history.db"));
+	});
+
+	test("OMP_PROFILE selects a profile-scoped agent dir", () => {
+		expect(resolveHistoryDb({ OMP_PROFILE: "work" })).toBe(
+			path.join(home, ".omp", "profiles", "work", "agent", "history.db"),
+		);
+	});
+
+	test("PI_CONFIG_DIR renames the default config dir", () => {
+		expect(resolveHistoryDb({ PI_CONFIG_DIR: ".ompdev" })).toBe(path.join(home, ".ompdev", "agent", "history.db"));
+	});
+
+	describe.skipIf(process.platform !== "linux" && process.platform !== "darwin")("XDG data home", () => {
+		let xdg = "";
+		beforeAll(() => {
+			xdg = fs.mkdtempSync(path.join(os.tmpdir(), "omp-monitor-xdg-"));
+			fs.mkdirSync(path.join(xdg, "omp", "profiles", "work"), { recursive: true });
+		});
+		afterAll(() => fs.rmSync(xdg, { recursive: true, force: true }));
+
+		test("default agent dir flattens agent/ under $XDG_DATA_HOME/omp", () => {
+			expect(resolveHistoryDb({ XDG_DATA_HOME: xdg })).toBe(path.join(xdg, "omp", "history.db"));
+		});
+
+		test("a custom PI_CODING_AGENT_DIR disables XDG", () => {
+			expect(resolveHistoryDb({ XDG_DATA_HOME: xdg, PI_CODING_AGENT_DIR: "/custom" })).toBe(
+				path.join("/custom", "history.db"),
+			);
+		});
+
+		test("a named profile uses $XDG_DATA_HOME/omp/profiles/<name> when that directory exists", () => {
+			expect(resolveHistoryDb({ XDG_DATA_HOME: xdg, OMP_PROFILE: "work" })).toBe(
+				path.join(xdg, "omp", "profiles", "work", "history.db"),
+			);
+		});
+
+		test("always sits next to the sessions root", () => {
+			const env = { XDG_DATA_HOME: xdg, OMP_PROFILE: "work" };
+			expect(path.dirname(resolveHistoryDb(env))).toBe(path.dirname(resolveSessionsRoot(env)));
 		});
 	});
 });
