@@ -8,6 +8,7 @@ import ompPromptMonitor, {
 	formatStopResult,
 	formatUnknownAction,
 	formatUpdateResult,
+	getMonitorCompletions,
 	parseMonitorAction,
 	restartDashboard,
 } from "../src/extension";
@@ -64,6 +65,7 @@ describe("ctx.ui.notify contract", () => {
 describe("parseMonitorAction", () => {
 	test.each([
 		["", "start"],
+		["start", "start"],
 		["  ", "start"],
 		[" STOP ", "stop"],
 		["restart", "restart"],
@@ -120,9 +122,39 @@ describe("restartDashboard", () => {
 describe("formatUnknownAction", () => {
 	test("bogus action", () => {
 		expect(formatUnknownAction("bogus")).toEqual({
-			message: 'Unknown /monitor action "bogus" — use: stop, restart, update',
+			message: 'Unknown /monitor action "bogus" — use: start, stop, restart, update',
 			level: "error",
 		});
+	});
+});
+
+describe("getMonitorCompletions", () => {
+	test("empty prefix lists every action in table order with trailing-space values", () => {
+		const items = getMonitorCompletions("");
+		expect(items?.map(item => item.value)).toEqual(["start ", "stop ", "restart ", "update "]);
+		expect(items?.map(item => item.label)).toEqual(["start", "stop", "restart", "update"]);
+		expect(items?.every(item => item.description !== undefined && item.description !== "")).toBe(true);
+	});
+
+	test("prefix narrows the list", () => {
+		expect(getMonitorCompletions("st")?.map(item => item.label)).toEqual(["start", "stop"]);
+	});
+
+	test("prefix match is case-insensitive", () => {
+		expect(getMonitorCompletions("RE")?.map(item => item.label)).toEqual(["restart"]);
+	});
+
+	test("hint is the remainder of the action name", () => {
+		expect(getMonitorCompletions("re")?.[0]?.hint).toBe("start");
+		expect(getMonitorCompletions("restart")?.[0]?.hint).toBeUndefined();
+	});
+
+	test("returns null once past the action token", () => {
+		expect(getMonitorCompletions("stop ")).toBeNull();
+	});
+
+	test("returns null when nothing matches", () => {
+		expect(getMonitorCompletions("x")).toBeNull();
 	});
 });
 
