@@ -44,7 +44,7 @@ From the repository root:
 omp plugin link .
 ```
 
-Restart omp (newly installed extension modules require a restart — `/reload-plugins` does not rebuild initialized extensions), then run `/monitor` inside a session. `/monitor` starts the standalone dashboard if one isn't already running, and marks the current session `live` via a periodic heartbeat file until you exit. `/monitor stop`, `/monitor restart`, and `/monitor update` are also supported.
+Restart omp (newly installed extension modules require a restart — `/reload-plugins` does not rebuild initialized extensions), then run `/monitor` inside a session. `/monitor` starts the standalone dashboard if one isn't already running, and marks the current session `live` via a periodic heartbeat file until you exit. `/monitor start` is the same as bare `/monitor`; `/monitor stop`, `/monitor restart`, and `/monitor update` are also supported. Typing `/monitor ` lists the sub-commands with descriptions, and Tab or Enter on a row completes it.
 
 To install the plugin from GitHub:
 

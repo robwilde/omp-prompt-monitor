@@ -27,10 +27,22 @@ export interface OmpCtx {
 /** Session lifecycle events this package hooks. `session_start` fires once per session runtime (main session, each in-process subagent, each ACP session), not on in-process switches; `/new`, `/resume`, fork, and `/btw` fire `session_switch`/`session_branch` after the session manager has already moved to the new session. */
 export type OmpSessionEvent = "session_start" | "session_switch" | "session_branch" | "session_shutdown";
 
+/** Subset of pi-tui's `AutocompleteItem`. `value` replaces the entire argument text after `/<name> ` (end it with a space to finish the token); `hint` is the dim ghost text shown after the cursor while the row is selected. */
+export interface OmpAutocompleteItem {
+	value: string;
+	label: string;
+	description?: string;
+	hint?: string;
+}
+
+export interface OmpCommandOptions {
+	description?: string;
+	/** Receives the raw text after `/<name> ` up to the cursor (`""` right after the space); `null` shows no popup. Synchronous by omp's extension type. */
+	getArgumentCompletions?: (argumentPrefix: string) => OmpAutocompleteItem[] | null;
+	handler: (args: string, ctx: OmpCtx) => Promise<void>;
+}
+
 export interface OmpApi {
 	on(event: OmpSessionEvent, handler: (event: unknown, ctx: OmpCtx) => unknown): void;
-	registerCommand(
-		name: string,
-		options: { description?: string; handler: (args: string, ctx: OmpCtx) => Promise<void> },
-	): void;
+	registerCommand(name: string, options: OmpCommandOptions): void;
 }

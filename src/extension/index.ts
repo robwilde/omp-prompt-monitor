@@ -5,7 +5,7 @@ import { HEARTBEAT_INTERVAL_MS, type HeartbeatInput, removeHeartbeat, resolveDas
 import { DEFAULT_PORT, formatUrl, probeExisting, type StopOutcome, stopExisting } from "../server";
 import { repoSlug } from "../update";
 import { createHeartbeatTracker } from "./heartbeat-tracker";
-import type { OmpApi, OmpCtx, OmpNotifyLevel } from "./omp-api";
+import type { OmpApi, OmpAutocompleteItem, OmpCtx, OmpNotifyLevel } from "./omp-api";
 import { findInstalledPlugin, isDevLink, runInstall } from "./update";
 
 const POLL_ATTEMPTS = 20;
@@ -25,7 +25,14 @@ function snapshotHeartbeat(ctx: OmpCtx, startedAt: number): HeartbeatInput | und
 	};
 }
 
-export type MonitorAction = "start" | "stop" | "restart" | "update";
+const MONITOR_ACTIONS = [
+	{ name: "start", description: "Start the dashboard if needed and show its URL (default)" },
+	{ name: "stop", description: "Stop the running dashboard server" },
+	{ name: "restart", description: "Restart the dashboard server" },
+	{ name: "update", description: "Update the plugin and restart the dashboard" },
+] as const satisfies readonly { name: string; description: string }[];
+
+export type MonitorAction = (typeof MONITOR_ACTIONS)[number]["name"];
 
 export type UpdateOutcome =
 	| { kind: "not-installed"; slug: string }
@@ -37,8 +44,20 @@ export type UpdateOutcome =
 export function parseMonitorAction(args: string): MonitorAction | null {
 	const value = args.trim().toLowerCase();
 	if (value === "") return "start";
-	if (value === "stop" || value === "restart" || value === "update") return value;
-	return null;
+	return MONITOR_ACTIONS.find(action => action.name === value)?.name ?? null;
+}
+
+/** Completes the first `/monitor` argument against the action table, mirroring omp's built-in sub-command completer. */
+export function getMonitorCompletions(argumentPrefix: string): OmpAutocompleteItem[] | null {
+	if (argumentPrefix.includes(" ")) return null;
+	const lower = argumentPrefix.toLowerCase();
+	const items = MONITOR_ACTIONS.filter(action => action.name.startsWith(lower)).map(action => ({
+		value: `${action.name} `,
+		label: action.name,
+		description: action.description,
+		hint: action.name.slice(lower.length) || undefined,
+	}));
+	return items.length > 0 ? items : null;
 }
 
 export function formatMonitorResult(url: string, alive: boolean, logFile?: string): { message: string; level: OmpNotifyLevel } {
@@ -51,7 +70,7 @@ export function formatMonitorResult(url: string, alive: boolean, logFile?: strin
 
 export function formatUnknownAction(raw: string): { message: string; level: OmpNotifyLevel } {
 	return {
-		message: `Unknown /monitor action "${raw.trim()}" — use: stop, restart, update`,
+		message: `Unknown /monitor action "${raw.trim()}" — use: ${MONITOR_ACTIONS.map(action => action.name).join(", ")}`,
 		level: "error",
 	};
 }
@@ -260,7 +279,10 @@ export default function ompPromptMonitor(pi: OmpApi): void {
 	pi.on("session_shutdown", (_event, ctx) => tracker.shutdown([ctx.sessionManager.getSessionId()]));
 
 	pi.registerCommand("monitor", {
-		description: "Open the session prompt dashboard (stop | restart | update)",
+		description: `Open the session prompt dashboard (${MONITOR_ACTIONS.filter(action => action.name !== "start")
+			.map(action => action.name)
+			.join(" | ")})`,
+		getArgumentCompletions: getMonitorCompletions,
 		handler: async (args, ctx) => {
 			const action = parseMonitorAction(args);
 			if (action === null) {
