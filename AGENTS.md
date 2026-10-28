@@ -43,17 +43,25 @@ parseSessionText  →  createIndexStore  →  buildSnapshot       →  /api/snap
 
 ## Development Commands
 
-There is **no `scripts` field in `package.json`** — invoke Bun directly:
+Scripts from `package.json` (Bun only):
 
 ```bash
 bun run src/cli.ts                       # start dashboard, default port 7333
 bun run src/cli.ts --port 8080 --open    # custom port, opens browser
 bun run src/cli.ts --json > snapshot.json   # print full snapshot, no server
-bun test                                 # run all specs in test/
+bun run lint                             # oxlint --deny-warnings src test scripts
+bun run typecheck                        # tsc --noEmit
+bun test                                 # run all specs in test/ (same as bun run test)
 bun test test/journal.test.ts            # run one spec file
+bun run bump                             # patch-bump package.json version
+bun run check:version                    # CI version-bump check vs origin/main
 ```
 
-There is **no local typecheck command**: `typescript` is not a dependency (`bun.lock` only resolves `@types/bun` → `bun-types` → `@types/node`/`undici-types`), and no `tsc` binary is installed. Bun transpiles/runs `.ts` directly without type-checking. Don't invent a `tsc`/typecheck step; if strict type safety needs enforcing in CI, that requires adding `typescript` as a devDependency first — flag this rather than assuming `bunx tsc --noEmit` works out of the box.
+Typechecking is `tsc --noEmit` (`typescript` is a pinned devDependency; Bun itself transpiles/runs `.ts` without type-checking, so run `bun run typecheck` yourself).
+
+**Versioning**: every PR must bump the `package.json` version — run `bun run bump` (increments the patch of plain `major.minor.patch`) and commit the result. The CI `version` job (PRs only) runs `bun run check:version`, which fetches `origin/$GITHUB_BASE_REF` (default `main`) and fails unless the PR's version is strictly newer than the base's. Expect a `package.json` conflict when another PR merges first; re-bump after rebasing.
+
+CI (`.github/workflows/ci.yml`, PRs and pushes to `main`) runs four jobs: `lint`, `test`, `typecheck`, `version`. Run the first three locally before pushing.
 
 Local plugin development/testing inside omp itself:
 
@@ -83,7 +91,7 @@ omp plugin link ./omp-prompt-monitor
 - `src/server.ts` — HTTP routes, identity-header reuse mechanism, snapshot caching.
 - `src/extension/index.ts` + `src/extension/omp-api.ts` — omp plugin integration surface.
 - `src/client/index.html` — the entire frontend.
-- `package.json` — no `scripts`, no runtime dependencies; `exports`/`bin`/`omp.extensions` define the three consumption modes (library import, CLI bin, omp plugin).
+- `package.json` — `scripts` (`lint`, `typecheck`, `test`, `bump`, `check:version`), devDependencies (`@types/bun`, `oxlint`, `typescript`), no runtime dependencies; `exports`/`bin`/`omp.extensions` define the three consumption modes (library import, CLI bin, omp plugin).
 - `tsconfig.json` — `strict: true`, `noUncheckedIndexedAccess: true`, `noEmit: true` (ships raw `.ts`), `moduleResolution: "bundler"`.
 
 ## Runtime/Tooling Preferences
@@ -91,11 +99,11 @@ omp plugin link ./omp-prompt-monitor
 - **Bun only** (`engines.bun >= 1.3.14`). No Node-specific build/runtime path exists or should be added.
 - **ESM only** (`"type": "module"`), `isolatedModules: true` — every file must be a valid standalone module.
 - No bundler/build step: TypeScript source ships and runs as-is (`bin`/`exports` point straight at `.ts` files).
-- No linter/formatter config present in the repo — match existing style by hand rather than introducing a new tool config unasked.
+- Linting: `oxlint` (pinned devDependency) via `bun run lint`, with `--deny-warnings` over `src test scripts`; no `.oxlintrc*` config, so defaults apply. No formatter config present — match existing style by hand rather than introducing a new tool config unasked.
 
 ## Testing & QA
 
 - Framework: Bun's built-in `bun:test` (`describe`, `test`, `expect`) — no Jest/Vitest.
 - Convention: `test/**/*.test.ts`, fixtures as literal `.jsonl` files under `test/fixtures/`, loaded via `Bun.file(new URL('./fixtures/....jsonl', import.meta.url)).text()`.
 - Run: `bun test` (auto-discovers) or `bun test test/paths.test.ts test/journal.test.ts`.
-- Current coverage is narrow: `test/paths.test.ts` covers the env-precedence branches of `resolveSessionsRoot` and `resolveHistoryDb`; `test/recap.test.ts` covers `loadLatestRecap` against temp dbs built with omp's exact `session_recaps` DDL (latest-row/tiebreak selection, session isolation, seconds→ms, missing db/table/rows → `null`); `test/journal.test.ts` covers only a subset of `parseSessionText` (title-slot precedence, noise skipping, malformed-line counting, legacy title derivation, invalid input). **Untested**: `index-store.ts` (cache load/write, glob filtering, concurrency, incremental refresh), `view.ts` (`buildSnapshot`, grouping, liveness), `heartbeat.ts` (write/remove/read, staleness), `git.ts` (`describeRepo`, timeout, memoization), and most `tailStatus`/timestamp-fallback branches in `journal.ts`. When touching any of these, add tests for the new behavior following the existing fixture-file pattern rather than assuming prior coverage exists.
+- Current coverage, one spec per module: `test/paths.test.ts` — env-precedence branches of `resolveSessionsRoot` and `resolveHistoryDb`; `test/recap.test.ts` — `loadLatestRecap` against temp dbs built with omp's exact `session_recaps` DDL (latest-row/tiebreak selection, session isolation, seconds→ms, missing db/table/rows → `null`); `test/journal.test.ts` — a subset of `parseSessionText` (title-slot precedence, noise skipping, malformed-line counting, legacy title derivation, invalid input); `test/index-store.test.ts` — `createIndexStore` cache-version handling (older-parser cache discarded, current-version entry reused on unchanged size+mtime); `test/view.test.ts` — `buildSnapshot` keeps replies out of the index and loads them on demand; `test/portable-prompt.test.ts` — `withPortableText` scaffolding stripping; `test/extension.test.ts` — `/monitor` result/stop formatting, `parseMonitorAction`, the `ctx.ui.notify` contract, and heartbeat-tracker session switching/drain; `test/update.test.ts` — `isNewerVersion`, `repoSlug`, `computeUpdateStatus`; `test/bump-version.test.ts` — `bumpPatch`; `test/check-version-bump.test.ts` — `resolveBaseRef`, `parseBaseVersion`, `evaluateBump`, `runGit`. **Untested**: `heartbeat.ts` (write/remove/read, staleness), `git.ts` (`describeRepo`, timeout, memoization), index-store glob filtering/concurrency/incremental refresh, `buildSnapshot` grouping/liveness, and most `tailStatus`/timestamp-fallback branches in `journal.ts`. When touching any of these, add tests for the new behavior following the existing fixture-file pattern rather than assuming prior coverage exists.
